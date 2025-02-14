@@ -311,3 +311,49 @@ def combine_dagmc_models(models_to_merge):
             renumberizer.load_file(temp_filename)
     renumberizer.renumber_ids()
     return dagmc.DAGModel(renumberizer.mb)
+
+
+def ribs_from_kisslinger_format(filename, start_line=3, scale=1):
+    """Reads a Kisslinger format file and returns a list of toroidal angles,
+    along with a list of lists of the rib loci (in x,y,z) at each toroidal
+    angle. It is expected that toroidal angles are provided in degrees.
+
+    Arguments:
+        filename (str): Path to the file to be read.
+        start_line (int): Line at which the data should start being read,
+            should skip any comments and the line describing the number of
+            toroidal angles, poloidal angles, and periods. Defaults to 3.
+        scale (float): Amount to scale the r-z coordinates by. Defaults to 1.
+    Returns:
+        toroidal_angles (list of float): List of all the toroidal angles in the
+            angles in the input file in degrees.
+        profiles (numpy array): 3 dimensional numpy array where the first
+            dimension corresponds to individual ribs, the second to the
+            position on a rib, and the third to the actual x,y,z coordinate
+            of the locus.
+    """
+
+    with open(file=filename) as file:
+        data = file.readlines()
+
+    profiles = []
+    profile = []
+    toroidal_angles = []
+
+    for line in data[start_line - 1 :]:
+        if "\t" not in line:
+            toroidal_angle = float(line.rstrip())
+            toroidal_angles.append(toroidal_angle)
+            if len(profile) != 0:
+                profiles.append(profile)
+                profile = []
+        else:
+            line = line.rstrip()
+            r_z_coords = [float(coord) * scale for coord in line.split("\t")]
+            x_coord = r_z_coords[0] * np.cos(np.deg2rad(toroidal_angle))
+            y_coord = r_z_coords[0] * np.sin(np.deg2rad(toroidal_angle))
+            z_coord = r_z_coords[1]
+            profile.append([x_coord, y_coord, z_coord])
+    profiles.append(profile)
+
+    return toroidal_angles, np.array(profiles)
