@@ -6,7 +6,6 @@ dependencies:
   - pip
   - numpy=1.26.4
   - scipy
-  - scikit-learn
   - cadquery
   - moab=5.5.1[build=nompi_tempest_*]
   - cad_to_dagmc >=0.8.2

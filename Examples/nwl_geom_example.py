@@ -1,6 +1,6 @@
 from pathlib import Path
 import parastell.parastell as ps
-from parastell.cubit_io import tag_surface
+from parastell.cubit_utils import tag_surface
 
 # Define directory to export all output files to
 export_dir = ""

@@ -7,17 +7,20 @@ import pystell.read_vmec as read_vmec
 import parastell.source_mesh as sm
 
 
-def remove_files():
+files_to_remove = [
+    "source_mesh.h5m",
+    "stellarator.log",
+]
 
-    if Path("source_mesh.h5m").exists():
-        Path.unlink("source_mesh.h5m")
-    if Path("stellarator.log").exists():
-        Path.unlink("stellarator.log")
+
+def remove_files():
+    for file in files_to_remove:
+        if Path(file).exists():
+            Path.unlink(file)
 
 
 @pytest.fixture
 def source_mesh():
-
     vmec_file = Path("files_for_tests") / "wout_vmec.nc"
 
     vmec_obj = read_vmec.VMECData(vmec_file)
@@ -33,14 +36,14 @@ def source_mesh():
 
 
 def test_mesh_basics(source_mesh):
+    """Tests whether SourceMesh arguments are instantiated as expected."""
+    remove_files()
 
     num_cfs_exp = 6
     num_poloidal_pts_exp = 41
     num_toroidal_pts_exp = 9
     tor_ext_exp = 15.0
     scale_exp = 100
-
-    remove_files()
 
     assert source_mesh.num_cfs_pts == num_cfs_exp
     assert source_mesh.num_poloidal_pts == num_poloidal_pts_exp
@@ -52,6 +55,8 @@ def test_mesh_basics(source_mesh):
 
 
 def test_vertices(source_mesh):
+    """Tests whether SourceMesh vertices are generated as expected."""
+    remove_files()
 
     num_cfs_exp = 6
     num_poloidal_pts_exp = 41
@@ -60,8 +65,6 @@ def test_vertices(source_mesh):
     num_verts_exp = num_toroidal_pts_exp * (
         (num_cfs_exp - 1) * (num_poloidal_pts_exp - 1) + 1
     )
-
-    remove_files()
 
     source_mesh.create_vertices()
 
@@ -73,6 +76,8 @@ def test_vertices(source_mesh):
 
 
 def test_mesh_generation(source_mesh):
+    """Tests whether SourceMesh construction functions as expected."""
+    remove_files()
 
     num_s = 6
     num_theta = 41
@@ -86,8 +91,6 @@ def test_mesh_generation(source_mesh):
     ) + tets_per_hex * (num_s - 2) * (num_theta - 1) * (num_phi - 1)
     num_neg_vols_exp = 0
 
-    remove_files()
-
     source_mesh.create_vertices()
     source_mesh.create_mesh()
 
@@ -98,7 +101,7 @@ def test_mesh_generation(source_mesh):
 
 
 def test_export(source_mesh):
-
+    """Tests whether SourceMesh's export functionality behaves as expected."""
     remove_files()
 
     source_mesh.create_vertices()

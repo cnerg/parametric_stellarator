@@ -6,24 +6,29 @@ import pytest
 # import this before read_vmec to deal with conflicting
 # dependencies correctly
 import parastell.invessel_build as ivb
-from parastell.cubit_io import create_new_cubit_instance
+from parastell.cubit_utils import (
+    check_cubit_installation,
+    create_new_cubit_instance,
+)
 
 import pystell.read_vmec as read_vmec
 
 
-def remove_files():
+files_to_remove = [
+    "chamber.step",
+    "component.step",
+    "stellarator.log",
+]
 
-    if Path("chamber.step").exists():
-        Path.unlink("chamber.step")
-    if Path("component.step").exists():
-        Path.unlink("component.step")
-    if Path("stellarator.log").exists():
-        Path.unlink("stellarator.log")
+
+def remove_files():
+    for file in files_to_remove:
+        if Path(file).exists():
+            Path.unlink(file)
 
 
 @pytest.fixture
 def radial_build():
-
     toroidal_angles = [0.0, 5.0, 10.0, 15.0]
     poloidal_angles = [0.0, 120.0, 240.0, 360.0]
     wall_s = 1.08
@@ -45,7 +50,6 @@ def radial_build():
 
 @pytest.fixture
 def invessel_build(radial_build):
-
     vmec_file = Path("files_for_tests") / "wout_vmec.nc"
     vmec = read_vmec.VMECData(vmec_file)
     num_ribs = 11
@@ -56,7 +60,7 @@ def invessel_build(radial_build):
 
 
 def test_ivb_basics(invessel_build):
-
+    """Tests whether InVesselBuild arguments are instantiated as expected."""
     toroidal_angles_exp = [0.0, 5.0, 10.0, 15.0]
     poloidal_angles_exp = [0.0, 120.0, 240.0, 360.0]
     num_components_exp = 2
@@ -68,8 +72,6 @@ def test_ivb_basics(invessel_build):
     chamber_mat_tag_exp = "Vacuum"
 
     remove_files()
-
-    invessel_build.populate_surfaces()
 
     assert np.allclose(
         invessel_build.radial_build.toroidal_angles, toroidal_angles_exp
@@ -94,8 +96,10 @@ def test_ivb_basics(invessel_build):
     remove_files()
 
 
-def test_ivb_construction(invessel_build):
-
+def test_ivb_cadquery_construction(invessel_build):
+    """Tests whether the InVesselBuild CadQuery workflow functions as
+    expected.
+    """
     num_components_exp = 2
     len_loci_pt_exp = 3
 
@@ -115,6 +119,9 @@ def test_ivb_construction(invessel_build):
 
 
 def test_ivb_pydagmc_construction(invessel_build):
+    """Tests whether the InVesselBuild PyDAGMC workflow functions as
+    expected.
+    """
     num_volumes_exp = 1
     num_surfaces_exp = 4
 
@@ -128,17 +135,23 @@ def test_ivb_pydagmc_construction(invessel_build):
 
 
 def test_ivb_exports(invessel_build):
-
+    """Tests whether the InVesselBuild CadQuery workflow's export
+    functionality behaves as expected. The Cubit-enabled portion of this test
+    is skipped if Cubit cannot be imported.
+    """
     remove_files()
-    create_new_cubit_instance()
     invessel_build.populate_surfaces()
     invessel_build.calculate_loci()
     invessel_build.generate_components()
     invessel_build.export_step()
-    invessel_build.export_component_mesh(components=["component"])
 
     assert Path("chamber.step").exists()
     assert Path("component.step").exists()
-    assert Path("component.h5m").exists()
+
+    if check_cubit_installation():
+        create_new_cubit_instance()
+
+        invessel_build.export_component_mesh(components=["component"])
+        assert Path("component.h5m").exists()
 
     remove_files()

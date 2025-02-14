@@ -5,10 +5,19 @@ from abc import ABC
 import numpy as np
 
 import cadquery as cq
-import cubit
 
 from . import log
-from . import cubit_io as cubit_io
+from .cubit_utils import (
+    import_geom_to_cubit,
+    export_mesh_cubit,
+    mesh_volume_skeleton,
+    get_last_id,
+)
+
+# Import cubit_utils separately for its initialized variable. If initialized is
+# imported into this namespace, changes to the variable do not persist when
+# modified by calls to the imported functions
+from . import cubit_utils
 from .utils import read_yaml_config, filter_kwargs, reorder_loop, m2cm
 
 export_allowed_kwargs = ["step_filename", "export_mesh", "mesh_filename"]
@@ -50,10 +59,10 @@ class MagnetSet(ABC):
     def import_geom_cubit(self):
         """Import geometry file for magnet set into Coreform Cubit."""
         first_vol_id = 1
-        if cubit_io.initialized:
-            first_vol_id += cubit.get_last_id("volume")
+        if cubit_utils.initialized:
+            first_vol_id += get_last_id("volume")
 
-        last_vol_id = cubit_io.import_geom_to_cubit(
+        last_vol_id = import_geom_to_cubit(
             self.geometry_file, self.working_dir
         )
         self.volume_ids = list(range(first_vol_id, last_vol_id + 1))
@@ -72,14 +81,12 @@ class MagnetSet(ABC):
         if not hasattr(self, "volume_ids"):
             self.import_geom_cubit()
 
-        volume_ids_str = " ".join(str(id) for id in self.volume_ids)
-        cubit.cmd(f"volume {volume_ids_str} scheme tetmesh")
-        cubit.cmd(
-            f"volume {volume_ids_str} sizing function type skeleton min_size "
-            f"{min_size} max_size {max_size} max_gradient {max_gradient} "
-            "min_num_layers_3d 1 min_num_layers_2d 1 min_num_layers_1d 1"
+        mesh_volume_skeleton(
+            self.volume_ids,
+            min_size=min_size,
+            max_size=max_size,
+            max_gradient=max_gradient,
         )
-        cubit.cmd(f"mesh volume {volume_ids_str}")
 
     def export_mesh(self, mesh_filename="magnet_mesh", export_dir=""):
         """Creates tetrahedral mesh of magnet volumes and exports H5M format
@@ -93,9 +100,7 @@ class MagnetSet(ABC):
         """
         self._logger.info("Exporting mesh H5M file for magnet coils...")
 
-        cubit_io.export_mesh_cubit(
-            filename=mesh_filename, export_dir=export_dir
-        )
+        export_mesh_cubit(filename=mesh_filename, export_dir=export_dir)
 
 
 class MagnetSetFromFilaments(MagnetSet):
@@ -351,12 +356,6 @@ class MagnetSetFromFilaments(MagnetSet):
         self._cut_magnets()
 
         self.coil_solids = [coil.solid for coil in self.magnet_coils]
-
-    def import_step_cubit(self):
-        """Import STEP file for magnet set into Coreform Cubit."""
-        first_vol_id = 1
-        if cubit_io.initialized:
-            first_vol_id += cubit.get_last_id("volume")
 
 
 class MagnetSetFromGeometry(MagnetSet):

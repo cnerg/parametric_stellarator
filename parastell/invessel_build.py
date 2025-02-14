@@ -4,14 +4,19 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 
-import cubit
 import cadquery as cq
 import pystell.read_vmec as read_vmec
 import dagmc
 from pymoab import core, types
 
 from . import log
-from . import cubit_io
+from .cubit_utils import (
+    import_step_cubit,
+    export_mesh_cubit,
+    orient_spline_surfaces,
+    merge_surfaces,
+    mesh_volume_auto_factor,
+)
 from .utils import (
     normalize,
     expand_list,
@@ -47,43 +52,6 @@ def create_moab_tris_from_verts(corners, mbc, reverse=False):
         )
 
     return [tri_1, tri_2]
-
-
-def orient_spline_surfaces(volume_id):
-    """Extracts the inner and outer surface IDs for a given ParaStell in-vessel
-    component volume in Coreform Cubit.
-
-    Arguments:
-        volume_id (int): Cubit volume ID.
-
-    Returns:
-        inner_surface_id (int): Cubit ID of in-vessel component inner surface.
-        outer_surface_id (int): Cubit ID of in-vessel component outer surface.
-    """
-
-    surfaces = cubit.get_relatives("volume", volume_id, "surface")
-
-    spline_surfaces = []
-    for surface in surfaces:
-        if cubit.get_surface_type(surface) == "spline surface":
-            spline_surfaces.append(surface)
-
-    if len(spline_surfaces) == 1:
-        outer_surface_id = spline_surfaces[0]
-        inner_surface_id = None
-    else:
-        # The outer surface bounding box will have the larger maximum XY value
-        if (
-            cubit.get_bounding_box("surface", spline_surfaces[1])[4]
-            > cubit.get_bounding_box("surface", spline_surfaces[0])[4]
-        ):
-            outer_surface_id = spline_surfaces[1]
-            inner_surface_id = spline_surfaces[0]
-        else:
-            outer_surface_id = spline_surfaces[0]
-            inner_surface_id = spline_surfaces[1]
-
-    return inner_surface_id, outer_surface_id
 
 
 class InVesselBuild(object):
@@ -490,15 +458,13 @@ class InVesselBuild(object):
             if prev_outer_surface_id is None:
                 prev_outer_surface_id = outer_surface_id
             else:
-                cubit.cmd(
-                    f"merge surface {inner_surface_id} {prev_outer_surface_id}"
-                )
+                merge_surfaces(inner_surface_id, prev_outer_surface_id)
                 prev_outer_surface_id = outer_surface_id
 
     def import_step_cubit(self):
         """Imports STEP files from in-vessel build into Coreform Cubit."""
         for name, data in self.radial_build.radial_build.items():
-            vol_id = cubit_io.import_step_cubit(name, self.export_dir)
+            vol_id = import_step_cubit(name, self.export_dir)
             data["vol_id"] = vol_id
 
     def export_step(self, export_dir=""):
@@ -544,19 +510,18 @@ class InVesselBuild(object):
         Arguments:
             components (array of strings): array containing the name
                 of the in-vessel components to be meshed.
-            mesh_size (int): controls the size of the mesh. Takes values
-                between 1 (finer) and 10 (coarser) (optional, defaults to 5).
+            mesh_size (float): controls the size of the mesh. Takes values
+                between 1.0 (finer) and 10.0 (coarser) (optional, defaults to
+                5.0).
             import_dir (str): directory containing the STEP file of
                 the in-vessel component (optional, defaults to empty string).
             export_dir (str): directory to which to export the h5m
                 output file (optional, defaults to empty string).
         """
         for component in components:
-            vol_id = cubit_io.import_step_cubit(component, import_dir)
-            cubit.cmd(f"volume {vol_id} scheme tetmesh")
-            cubit.cmd(f"volume {vol_id} size auto factor {mesh_size}")
-            cubit.cmd(f"mesh volume {vol_id}")
-            cubit_io.export_mesh_cubit(
+            vol_id = import_step_cubit(component, import_dir)
+            mesh_volume_auto_factor([vol_id], mesh_size=mesh_size)
+            export_mesh_cubit(
                 filename=component,
                 export_dir=export_dir,
                 delete_upon_export=True,

@@ -62,8 +62,6 @@ stellarator.construct_magnets_from_filaments(
 # Export magnet files
 stellarator.export_magnets(
     step_filename="magnets",
-    export_mesh=True,
-    mesh_filename="magnet_mesh",
     export_dir=export_dir,
 )
 

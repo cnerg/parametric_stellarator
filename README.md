@@ -5,24 +5,23 @@
 [![Build status](https://github.com/svalinn/parastell/actions/workflows/docker_publish.yml/badge.svg)](https://github.com/svalinn/parastell/actions/workflows/docker_publish.yml)
 ---
 
-Open-source Python package featuring a parametric 3-D CAD modeling toolset for stellarator fusion devices with additional neutronics support. ParaStell uses plasma equilibrium VMEC data and a user-defined radial build to model in-vessel components of varying thickness in low-fidelity. Furthermore, coil filament point-locus data and a user-defined cross-section are used to model magnet coils. Additional neutronics support includes the use of VMEC data and MOAB to generate tetrahedral neutron source definitions and Coreform Cubit to generate DAGMC geometries for use in Monte Carlo radiation transport software. In addition, an option is included to generate a tetrahedral mesh of the magnets using Coreform Cubit for use in Monte Carlo mesh tallies. A neutron wall-loading utility is included that uses OpenMC to fire rays from a ParaStell neutron source mesh onto a ParaStell first wall CAD geometry.
+Open-source Python package featuring a parametric 3-D CAD modeling toolset for stellarator fusion devices with additional neutronics support. ParaStell uses plasma equilibrium VMEC data and a user-defined radial build to model in-vessel components of varying thickness in low-fidelity. Furthermore, coil filament point-locus data and a user-defined cross-section are used to model magnet coils. Additional neutronics support includes the generation of tetrahedral neutron source definitions and DAGMC geometries for use in Monte Carlo radiation transport software. In addition, an option is included to generate tetrahedral meshes of in-vessel components and magnets using Coreform Cubit for use in Monte Carlo mesh tallies. A neutron wall-loading utility is included that uses OpenMC to fire rays from a ParaStell neutron source mesh onto a ParaStell first wall CAD geometry.
 
 ![Example model](ParaStell-Example.png)
 
 ## Dependencies
 ParaStell depends on:
 
-- [CadQuery](https://cadquery.readthedocs.io/en/latest/installation.html)
 - [PyStell](https://github.com/aaroncbader/pystell_uw)
+- [CadQuery](https://cadquery.readthedocs.io/en/latest/installation.html)
+- [PyDAGMC](https://github.com/svalinn/pydagmc)
 - [MOAB](https://bitbucket.org/fathomteam/moab/src/master/)
-- [Coreform Cubit](https://coreform.com/products/downloads/)
 - [CAD-to-DAGMC](https://github.com/fusion-energy/cad_to_dagmc)
 - [OpenMC](https://github.com/openmc-dev/openmc)
 - [NumPy](https://numpy.org/install/)
 - [SciPy](https://scipy.org/install/)
-- [scikit-learn](https://scikit-learn.org/stable/install.html)
 - [PyYAML](https://pyyaml.org/wiki/PyYAMLDocumentation)
-- [PyDAGMC](https://github.com/svalinn/pydagmc)
+- [Coreform Cubit](https://coreform.com/products/downloads/) (optional)
 
 ## Install ParaStell
 Download and extract the ParaStell repository:
@@ -52,7 +51,7 @@ conda activate parastell_env
 Alternatively, view `INSTALL.md` for instructions on manually installing these Python dependencies using mamba.
 
 ### Install Coreform Cubit
-Download and install the latest version from [Coreform's Website](https://coreform.com/products/downloads/), then add the `/Coreform-Cubit-[version]/bin/` directory to your `PYTHONPATH` by adding a line similar to the following to your `.bashrc` file:
+To make use of ParaStell's Cubit functionality, download and install the latest version from [Coreform's Website](https://coreform.com/products/downloads/), then add the `/Coreform-Cubit-[version]/bin/` directory to your `PYTHONPATH` by adding a line similar to the following to your `.bashrc` file:
 
 ```bash
 export PYTHONPATH=$PYTHONPATH:$HOME/Coreform-Cubit-[version]/bin/

@@ -4,7 +4,7 @@ import pystell.read_vmec as read_vmec
 
 from . import magnet_coils
 from . import invessel_build as ivb
-from . import cubit_io
+from .cubit_utils import init_cubit
 from .utils import downsample_loop
 
 
@@ -77,7 +77,7 @@ def build_magnet_surface(filaments, sample_mod=1):
         sample_mod (int): sampling modifier for filament points (defaults to
             1). For a user-defined value n, every nth point will be sampled.
     """
-    cubit_io.init_cubit()
+    init_cubit()
 
     surface_lines = [
         [

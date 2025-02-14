@@ -1,13 +1,29 @@
 from pathlib import Path
 import subprocess
 
-import cubit
-
 initialized = False
+
+
+def check_cubit_installation():
+    """Checks if Cubit is present on the Python module search path.
+
+    Returns:
+        (bool): flag indicating the presence of Cubit on the module search
+            path.
+    """
+    try:
+        import cubit
+
+        return True
+    except ImportError:
+        return False
 
 
 def init_cubit():
     """Initializes Coreform Cubit with the DAGMC plugin."""
+    global cubit
+    import cubit
+
     global initialized
 
     if not initialized:
@@ -63,8 +79,6 @@ def export_step_cubit(filename, export_dir=""):
         export_dir (str): directory to which to export the STEP output file
             (defaults to empty string).
     """
-    init_cubit()
-
     export_path = Path(export_dir) / Path(filename).with_suffix(".step")
     cubit.cmd(f'export step "{export_path}" overwrite')
 
@@ -94,8 +108,6 @@ def export_cub5(filename, export_dir=""):
         export_dir (str): directory to which to export the cub5 output file
             (defaults to empty string).
     """
-    init_cubit()
-
     export_path = Path(export_dir) / Path(filename).with_suffix(".cub5")
     cubit.cmd(f'save cub5 "{export_path}" overwrite')
 
@@ -111,8 +123,6 @@ def export_mesh_cubit(filename, export_dir="", delete_upon_export=True):
         delete_upon_export (bool): delete the mesh from the Cubit instance
             after exporting. Prevents inclusion of mesh in future exports.
     """
-    init_cubit()
-
     exo_path = Path(export_dir) / Path(filename).with_suffix(".exo")
     h5m_path = Path(export_dir) / Path(filename).with_suffix(".h5m")
 
@@ -162,8 +172,6 @@ def export_dagmc_cubit(
         delete_upon_export (bool): delete the mesh from the Cubit instance
             after exporting. Prevents inclusion of mesh in future exports.
     """
-    init_cubit()
-
     cubit.cmd(
         f"set trimesher coarse on ratio {anisotropic_ratio} "
         f"angle {deviation_angle}"
@@ -196,3 +204,121 @@ def import_geom_to_cubit(filename, import_dir=""):
     filename = Path(filename)
     vol_id = importers[filename.suffix](filename, import_dir)
     return vol_id
+
+
+def make_material_block(mat_tag, block_id, vol_id_str):
+    """Issue commands to make a material block in Cubit.
+
+    Arguments:
+       mat_tag (str) : name of material block
+       block_id (int) : block number
+       vol_id_str (str) : space-separated list of volume ids
+    """
+    cubit.cmd("set duplicate block elements off")
+    cubit.cmd(f'create material "{mat_tag}" property_group ' '"CUBIT-ABAQUS"')
+    cubit.cmd(f"block {block_id} add volume {vol_id_str}")
+    cubit.cmd(f'block {block_id} material "{mat_tag}"')
+
+
+def imprint_and_merge():
+    """Imprints and merges all volumes in Cubit."""
+    cubit.cmd("imprint volume all")
+    cubit.cmd("merge volume all")
+
+
+def orient_spline_surfaces(volume_id):
+    """Extracts the inner and outer surface IDs for a given ParaStell in-vessel
+    component volume in Coreform Cubit.
+
+    Arguments:
+        volume_id (int): Cubit volume ID.
+
+    Returns:
+        inner_surface_id (int): Cubit ID of in-vessel component inner surface.
+        outer_surface_id (int): Cubit ID of in-vessel component outer surface.
+    """
+
+    surfaces = cubit.get_relatives("volume", volume_id, "surface")
+
+    spline_surfaces = []
+    for surface in surfaces:
+        if cubit.get_surface_type(surface) == "spline surface":
+            spline_surfaces.append(surface)
+
+    if len(spline_surfaces) == 1:
+        outer_surface_id = spline_surfaces[0]
+        inner_surface_id = None
+    else:
+        # The outer surface bounding box will have the larger maximum XY value
+        if (
+            cubit.get_bounding_box("surface", spline_surfaces[1])[4]
+            > cubit.get_bounding_box("surface", spline_surfaces[0])[4]
+        ):
+            outer_surface_id = spline_surfaces[1]
+            inner_surface_id = spline_surfaces[0]
+        else:
+            outer_surface_id = spline_surfaces[0]
+            inner_surface_id = spline_surfaces[1]
+
+    return inner_surface_id, outer_surface_id
+
+
+def merge_surfaces(surface_1, surface_2):
+    """Merges two surfaces in Cubit.
+
+    Arguments:
+        surface_1 (int): Cubit ID of one surface to be merged.
+        surface_2 (int): Cubit ID of the other surface to be merged.
+    """
+    cubit.cmd(f"merge surface {surface_1} {surface_2}")
+
+
+def mesh_volume_auto_factor(volume_ids, mesh_size=5.0):
+    """Meshes a volume in Cubit using automatically calculated interval sizes.
+
+    Arguments:
+        volume_ids (iterable of int): Cubit IDs of volumes to be meshed.
+        mesh_size (float): controls the size of the mesh. Takes values between
+            1.0 (finer) and 10.0 (coarser) (optional, defaults to 5.0).
+    """
+    volume_ids_str = " ".join(str(id) for id in volume_ids)
+
+    cubit.cmd(f"volume {volume_ids_str} scheme tetmesh")
+    cubit.cmd(f"volume {volume_ids_str} size auto factor {mesh_size}")
+    cubit.cmd(f"mesh volume {volume_ids_str}")
+
+
+def mesh_volume_skeleton(
+    volume_ids, min_size=20.0, max_size=50.0, max_gradient=1.5
+):
+    """Meshes a volume in Cubit using the skeleton sizing function.
+
+    Arguments:
+        volume_ids (iterable of int): Cubit IDs of volumes to be meshed.
+        min_size (float): minimum size of mesh elements (defaults to 20.0).
+        max_size (float): maximum size of mesh elements (defaults to 50.0).
+        max_gradient (float): maximum transition in mesh element size
+            (defaults to 1.5).
+    """
+    volume_ids_str = " ".join(str(id) for id in volume_ids)
+
+    cubit.cmd(f"volume {volume_ids_str} scheme tetmesh")
+    cubit.cmd(
+        f"volume {volume_ids_str} sizing function type skeleton min_size "
+        f"{min_size} max_size {max_size} max_gradient {max_gradient} "
+        "min_num_layers_3d 1 min_num_layers_2d 1 min_num_layers_1d 1"
+    )
+    cubit.cmd(f"mesh volume {volume_ids_str}")
+
+
+def get_last_id(entity):
+    """Returns the ID of the most recently created entity of a given type.
+
+    Arguments:
+        entity (str): the type of entity for which the ID should be retrieved.
+            Valid arguments include "vertex", "curve", "surface", and "volume".
+
+    Returns:
+        (int): the ID of the most recently created entity of the given type.
+    """
+    return cubit.get_last_id(entity)

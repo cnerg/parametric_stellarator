@@ -1,7 +1,6 @@
 import argparse
 from pathlib import Path
 
-import cubit
 import pystell.read_vmec as read_vmec
 import cadquery as cq
 import cad_to_dagmc
@@ -11,7 +10,13 @@ from . import log
 from . import invessel_build as ivb
 from . import magnet_coils as mc
 from . import source_mesh as sm
-from . import cubit_io
+from .cubit_utils import (
+    create_new_cubit_instance,
+    export_dagmc_cubit,
+    export_cub5,
+    make_material_block,
+    imprint_and_merge,
+)
 from .utils import read_yaml_config, filter_kwargs, m2cm, combine_dagmc_models
 
 build_cubit_model_allowed_kwargs = ["skip_imprint"]
@@ -28,20 +33,6 @@ export_cad_to_dagmc_allowed_kwargs = [
     "min_mesh_size",
     "max_mesh_size",
 ]
-
-
-def make_material_block(mat_tag, block_id, vol_id_str):
-    """Issue commands to make a material block in Cubit.
-
-    Arguments:
-       mat_tag (str) : name of material block
-       block_id (int) : block number
-       vol_id_str (str) : space-separated list of volume ids
-    """
-
-    cubit.cmd(f'create material "{mat_tag}" property_group ' '"CUBIT-ABAQUS"')
-    cubit.cmd(f"block {block_id} add volume {vol_id_str}")
-    cubit.cmd(f'block {block_id} material "{mat_tag}"')
 
 
 class Stellarator(object):
@@ -352,8 +343,6 @@ class Stellarator(object):
         neutronics model export via Coreform Cubit.
         (Internal function not intended to be called externally)
         """
-        cubit.cmd("set duplicate block elements off")
-
         if self.magnet_set:
             vol_list = list(self.magnet_set.volume_ids)
             block_id = min(vol_list)
@@ -380,10 +369,7 @@ class Stellarator(object):
         )
 
         # Ensure fresh Cubit instance
-        if cubit_io.initialized:
-            cubit.cmd("new")
-        else:
-            cubit_io.init_cubit()
+        create_new_cubit_instance()
 
         if self.invessel_build and not self.use_pydagmc:
             self.invessel_build.import_step_cubit()
@@ -394,8 +380,7 @@ class Stellarator(object):
         if skip_imprint and not self.use_pydagmc:
             self.invessel_build.merge_layer_surfaces()
         else:
-            cubit.cmd("imprint volume all")
-            cubit.cmd("merge volume all")
+            imprint_and_merge()
 
         self._tag_materials()
 
@@ -420,15 +405,13 @@ class Stellarator(object):
                 surface (i.e., lesser deviation angle results in more elements
                 in areas with higher curvature) (optional, defaults to 5.0).
         """
-        cubit_io.init_cubit()
-
         self._logger.info(
             "Exporting DAGMC neutronics model using Coreform Cubit..."
         )
 
         filename = Path(filename).with_suffix(".h5m")
 
-        cubit_io.export_dagmc_cubit(
+        export_dagmc_cubit(
             filename=filename,
             export_dir=export_dir,
             anisotropic_ratio=anisotropic_ratio,
@@ -447,11 +430,9 @@ class Stellarator(object):
             export_dir (str): directory to which to export DAGMC output file
                 (optional, defaults to empty string).
         """
-        cubit_io.init_cubit()
-
         self._logger.info("Exporting cub5 model...")
 
-        cubit_io.export_cub5(filename=filename, export_dir=export_dir)
+        export_cub5(filename=filename, export_dir=export_dir)
 
     def build_cad_to_dagmc_model(self):
         """Build model for DAGMC neutronics H5M file of Parastell components via
@@ -808,9 +789,6 @@ def parastell():
             if not args.magnets:
                 dagmc_export = all_data["dagmc_export"]
 
-        if cubit_io.initialized:
-            cubit.cmd("new")
-
         nwl_geom = Stellarator(vmec_file, logger=logger)
 
         nwl_required_keys = ["toroidal_angles", "poloidal_angles", "wall_s"]
@@ -828,8 +806,9 @@ def parastell():
         nwl_geom.construct_invessel_build(**nwl_build)
         nwl_geom.export_invessel_build(export_dir=args.export_dir)
 
+        nwl_geom.build_cubit_model(skip_imprint=True)
         nwl_geom.export_cubit_dagmc(
-            skip_imprint=True, filename="nwl_geom", export_dir=args.export_dir
+            filename="nwl_geom", export_dir=args.export_dir
         )
 
 
