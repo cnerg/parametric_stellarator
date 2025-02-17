@@ -313,7 +313,7 @@ def combine_dagmc_models(models_to_merge):
     return dagmc.DAGModel(renumberizer.mb)
 
 
-def ribs_from_kisslinger_format(filename, start_line=3, scale=1):
+def ribs_from_kisslinger_format(filename, start_line=3, scale=m2cm):
     """Reads a Kisslinger format file and returns a list of toroidal angles,
     along with a list of lists of the rib loci (in x,y,z) at each toroidal
     angle. It is expected that toroidal angles are provided in degrees.
@@ -323,7 +323,7 @@ def ribs_from_kisslinger_format(filename, start_line=3, scale=1):
         start_line (int): Line at which the data should start being read,
             should skip any comments and the line describing the number of
             toroidal angles, poloidal angles, and periods. Defaults to 3.
-        scale (float): Amount to scale the r-z coordinates by. Defaults to 1.
+        scale (float): Amount to scale the r-z coordinates by. Defaults to 100.
     Returns:
         toroidal_angles (list of float): List of all the toroidal angles in the
             angles in the input file in degrees.
