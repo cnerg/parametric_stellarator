@@ -684,6 +684,8 @@ class Rib(object):
         if not np.all(self.offset_list == 0):
             self.rib_loci += self.offset_list[:, np.newaxis] * self._normals()
 
+        self.rib_loci[-1] = self.rib_loci[0]
+
     def _generate_pymoab_verts(self, mbc):
         """Converts point-loci to MBVERTEX and adds them to a PyMOAB
         Core instance. The first and last rib loci are identical. To avoid

@@ -6,6 +6,7 @@ from functools import cached_property
 import numpy as np
 import math
 from scipy.ndimage import gaussian_filter
+from scipy.interpolate import RBFInterpolator, griddata
 from pymoab import core, types
 import dagmc
 
@@ -357,3 +358,80 @@ def ribs_from_kisslinger_format(filename, start_line=3, scale=m2cm):
     profiles.append(profile)
 
     return toroidal_angles, np.array(profiles)
+
+
+class KisslingerSurface(object):
+    def __init__(self, rib_data):
+        self.rib_data = rib_data
+        self.toroidal_angles = np.linspace(0, 90, rib_data.shape[0])
+        self.poloidal_angles = np.linspace(0, 360, rib_data.shape[1])
+
+    def build_analytic_surface(self):
+        x_data = []
+        y_data = []
+        z_data = []
+        grid_points = []
+        for phi, rib in zip(self.toroidal_angles, self.rib_data):
+            for theta, rib_locus in zip(self.poloidal_angles, rib):
+                x_data.append(rib_locus[0])
+                y_data.append(rib_locus[1])
+                z_data.append(rib_locus[2])
+                grid_points.append([phi, theta])
+        self.rbf_x = RBFInterpolator(grid_points, x_data, kernel="linear")
+        self.rbf_y = RBFInterpolator(grid_points, y_data, kernel="linear")
+        self.rbf_z = RBFInterpolator(grid_points, z_data, kernel="linear")
+
+    def get_loci(self, toroidal_angles, poloidal_angles):
+        toroidal_grid, polodial_grid = np.meshgrid(
+            toroidal_angles, poloidal_angles, indexing="ij"
+        )
+        grid_shape = toroidal_grid.shape
+        grid_points = np.column_stack(
+            (toroidal_grid.ravel(), polodial_grid.ravel())
+        )
+        x_points = self.rbf_x(grid_points).reshape(grid_shape)
+        y_points = self.rbf_y(grid_points).reshape(grid_shape)
+        z_points = self.rbf_z(grid_points).reshape(grid_shape)
+        return np.stack((x_points, y_points, z_points), axis=-1)
+
+    def vmec2xyz(self, s, theta, phi):
+        locus = self.get_loci(np.rad2deg(phi), np.rad2deg(theta))[0][0]
+        x = locus[0]
+        y = locus[1]
+        z = locus[2]
+        return x, y, z
+
+
+# class KisslingerSurface(object):
+#     def __init__(self, rib_data):
+#         self.rib_data = rib_data
+#         self.toroidal_angles = np.linspace(0, 90, rib_data.shape[0])
+#         self.poloidal_angles = np.linspace(0, 360, rib_data.shape[1])
+
+#     def build_analytic_surface(self):
+#         x_data = []
+#         y_data = []
+#         z_data = []
+#         grid_points = []
+#         for phi, rib in zip(self.toroidal_angles, self.rib_data):
+#             for theta, rib_locus in zip(self.poloidal_angles, rib):
+#                 x_data.append(rib_locus[0])
+#                 y_data.append(rib_locus[1])
+#                 z_data.append(rib_locus[2])
+#                 grid_points.append([phi, theta])
+#         self.rbf_x = RBFInterpolator(grid_points, x_data, kernel="linear")
+#         self.rbf_y = RBFInterpolator(grid_points, y_data, kernel="linear")
+#         self.rbf_z = RBFInterpolator(grid_points, z_data, kernel="linear")
+
+#     def get_loci(self, toroidal_angles, poloidal_angles):
+#         toroidal_grid, polodial_grid = np.meshgrid(
+#             toroidal_angles, poloidal_angles, indexing="ij"
+#         )
+#         grid_shape = toroidal_grid.shape
+#         grid_points = np.column_stack(
+#             (toroidal_grid.ravel(), polodial_grid.ravel())
+#         )
+#         x_points = self.rbf_x(grid_points).reshape(grid_shape)
+#         y_points = self.rbf_y(grid_points).reshape(grid_shape)
+#         z_points = self.rbf_z(grid_points).reshape(grid_shape)
+#         return np.stack((x_points, y_points, z_points), axis=-1)
