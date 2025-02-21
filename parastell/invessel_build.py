@@ -637,20 +637,25 @@ class Rib(object):
         self.offset_list = offset_list
         self.scale = scale
 
-    def _vmec2xyz(self, poloidal_offset=0):
+    def _vmec2xyz(self, toroidal_offset=0, poloidal_offset=0):
         """Return an N x 3 NumPy array containing the Cartesian coordinates of
         the points at this toroidal angle and N different poloidal angles, each
         offset slightly.
         (Internal function not intended to be called externally)
 
         Arguments:
+            toroidal_offset (float) : some offset to apply to the toroidal
+                angle for evaluating the location of the Cartesian points
+                (optional, defaults to 0).
             poloidal_offset (float) : some offset to apply to the full set of
                 poloidal angles for evaluating the location of the Cartesian
                 points (optional, defaults to 0).
         """
         return self.scale * np.array(
             [
-                self.vmec_obj.vmec2xyz(self.s, theta, self.phi)
+                self.vmec_obj.vmec2xyz(
+                    self.s, theta, self.phi + toroidal_offset
+                )
                 for theta in (self.theta_list + poloidal_offset)
             ]
         )
@@ -667,15 +672,15 @@ class Rib(object):
                 surface rib [cm].
         """
         eps = 1e-4
-        next_pt_loci = self._vmec2xyz(eps)
+        perturbed_phi_loci = self._vmec2xyz(toroidal_offset=eps)
+        perturbed_theta_loci = self._vmec2xyz(poloidal_offset=eps)
 
-        tangent = next_pt_loci - self.rib_loci
+        binormals = perturbed_phi_loci - self.rib_loci
+        tangents = perturbed_theta_loci - self.rib_loci
 
-        plane_norm = np.array([-np.sin(self.phi), np.cos(self.phi), 0])
+        normals = np.cross(binormals, tangents)
 
-        norm = np.cross(plane_norm, tangent)
-
-        return normalize(norm)
+        return normalize(normals)
 
     def calculate_loci(self):
         """Generates Cartesian point-loci for stellarator rib."""
