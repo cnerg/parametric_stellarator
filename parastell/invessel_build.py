@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from abc import ABC
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
@@ -605,7 +606,7 @@ class Surface(object):
         return np.array([rib.rib_loci for rib in self.Ribs])
 
 
-class Rib(object):
+class Rib(ABC):
     """An object representing a curve formed by interpolating a spline through
     a set of points located in the same toroidal plane but differing poloidal
     angles and offset from a reference curve.
@@ -660,27 +661,6 @@ class Rib(object):
             ]
         )
 
-    def _normals(self):
-        """Approximate the normal to the curve at each poloidal angle by first
-        approximating the tangent and binormal to the curve and then taking the
-        cross-product of those vectors.
-        (Internal function not intended to be called externally)
-
-        Arguments:
-            r_loci (np.array(double)): Cartesian point-loci of reference
-                surface rib [cm].
-        """
-        eps = 1e-4
-        perturbed_phi_loci = self._vmec2xyz(toroidal_offset=eps)
-        perturbed_theta_loci = self._vmec2xyz(poloidal_offset=eps)
-
-        binormals = perturbed_phi_loci - self.rib_loci
-        tangents = perturbed_theta_loci - self.rib_loci
-
-        normals = np.cross(binormals, tangents)
-
-        return normalize(normals)
-
     def calculate_loci(self):
         """Generates Cartesian point-loci for stellarator rib."""
         self.rib_loci = self._vmec2xyz()
@@ -714,6 +694,104 @@ class Rib(object):
         rib_spline = cq.Wire.assembleEdges([spline]).close()
 
         return rib_spline
+
+
+class PlanarRib(Rib):
+    """Inherits from Rib. This subclass represents a planar curve formed by
+    interpolating a spline through a set of points located in the same toroidal
+    plane but differing poloidal angles and offset from a reference curve.
+
+    Arguments:
+        vmec_obj (object): plasma equilibrium VMEC object as defined by the
+            PyStell-UW VMEC reader. Must have a method
+            'vmec2xyz(s, theta, phi)' that returns an (x,y,z) coordinate for
+            any closed flux surface label, s, poloidal angle, theta, and
+            toroidal angle, phi.
+        s (float): the normalized closed flux surface label defining the point
+            of reference for offset.
+        phi (np.array(double)): the toroidal angle defining the plane in which
+            the rib is located [rad].
+        theta_list (np.array(double)): the set of poloidal angles specified for
+            the rib [rad].
+        offset_list (np.array(double)): the set of offsets from the curve
+            defined by s for each toroidal angle, poloidal angle pair in the rib
+            [cm].
+        scale (float): a scaling factor between the units of VMEC and [cm].
+    """
+
+    def __init__(self, vmec_obj, s, theta_list, phi, offset_list, scale):
+
+        super().__init__(vmec_obj, s, theta_list, phi, offset_list, scale)
+
+    def _normals(self):
+        """Approximate the normal to the curve at each poloidal angle by first
+        approximating the tangent and binormal to the curve and then taking the
+        cross-product of those vectors.
+        (Internal function not intended to be called externally)
+
+        Arguments:
+            r_loci (np.array(double)): Cartesian point-loci of reference
+                surface rib [cm].
+        """
+        eps = 1e-4
+        perturbed_phi_loci = self._vmec2xyz(toroidal_offset=eps)
+        perturbed_theta_loci = self._vmec2xyz(poloidal_offset=eps)
+
+        binormals = perturbed_phi_loci - self.rib_loci
+        tangents = perturbed_theta_loci - self.rib_loci
+
+        normals = np.cross(binormals, tangents)
+
+        return normalize(normals)
+
+
+class NonPlanarRib(Rib):
+    """Inherits from Rib. This subclass represents a planar curve formed by
+    interpolating a spline through a set of points offset from a reference
+    surface along its normal.
+
+    Arguments:
+        vmec_obj (object): plasma equilibrium VMEC object as defined by the
+            PyStell-UW VMEC reader. Must have a method
+            'vmec2xyz(s, theta, phi)' that returns an (x,y,z) coordinate for
+            any closed flux surface label, s, poloidal angle, theta, and
+            toroidal angle, phi.
+        s (float): the normalized closed flux surface label defining the point
+            of reference for offset.
+        phi (np.array(double)): the toroidal angle defining the plane in which
+            the rib is located [rad].
+        theta_list (np.array(double)): the set of poloidal angles specified for
+            the rib [rad].
+        offset_list (np.array(double)): the set of offsets from the curve
+            defined by s for each toroidal angle, poloidal angle pair in the rib
+            [cm].
+        scale (float): a scaling factor between the units of VMEC and [cm].
+    """
+
+    def __init__(self, vmec_obj, s, theta_list, phi, offset_list, scale):
+
+        super().__init__(vmec_obj, s, theta_list, phi, offset_list, scale)
+
+    def _normals(self):
+        """Approximate the normal to the curve at each poloidal angle by first
+        approximating the tangent and binormal to the curve and then taking the
+        cross-product of those vectors.
+        (Internal function not intended to be called externally)
+
+        Arguments:
+            r_loci (np.array(double)): Cartesian point-loci of reference
+                surface rib [cm].
+        """
+        eps = 1e-4
+        perturbed_phi_loci = self._vmec2xyz(toroidal_offset=eps)
+        perturbed_theta_loci = self._vmec2xyz(poloidal_offset=eps)
+
+        binormals = perturbed_phi_loci - self.rib_loci
+        tangents = perturbed_theta_loci - self.rib_loci
+
+        normals = np.cross(binormals, tangents)
+
+        return normalize(normals)
 
 
 class RadialBuild(object):
