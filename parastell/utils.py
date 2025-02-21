@@ -314,7 +314,22 @@ def combine_dagmc_models(models_to_merge):
     return dagmc.DAGModel(renumberizer.mb)
 
 
-def ribs_from_kisslinger_format(filename, start_line=3, scale=m2cm):
+def rotate_ribs(ribs, angle):
+    """Rotate a set of NxMx3 set of loci about the Z axis in the
+    counter-clockwise direction"""
+    angle = np.deg2rad(angle)
+    rotation_mat = np.array(
+        [
+            [np.cos(angle), -np.sin(angle), 0],
+            [np.sin(angle), np.cos(angle), 0],
+            [0, 0, 1],
+        ]
+    )
+    ribs = np.dot(ribs, rotation_mat.T)
+    return ribs
+
+
+def ribs_from_kisslinger_format(filename, start_line=2, scale=m2cm):
     """Reads a Kisslinger format file and returns a list of toroidal angles,
     along with a list of lists of the rib loci (in x,y,z) at each toroidal
     angle. It is expected that toroidal angles are provided in degrees.
@@ -322,8 +337,7 @@ def ribs_from_kisslinger_format(filename, start_line=3, scale=m2cm):
     Arguments:
         filename (str): Path to the file to be read.
         start_line (int): Line at which the data should start being read,
-            should skip any comments and the line describing the number of
-            toroidal angles, poloidal angles, and periods. Defaults to 3.
+            should skip any comments. Defaults to 2.
         scale (float): Amount to scale the r-z coordinates by. Defaults to 100.
     Returns:
         toroidal_angles (list of float): List of all the toroidal angles in the
@@ -342,7 +356,11 @@ def ribs_from_kisslinger_format(filename, start_line=3, scale=m2cm):
     toroidal_angles = []
 
     for line in data[start_line - 1 :]:
-        if "\t" not in line:
+        if line.count("\t") == 2:
+            num_toroidal_angles, num_poloidal_angles, periods = (
+                line.rstrip().split("\t")
+            )
+        elif "\t" not in line and "#" not in line:
             toroidal_angle = float(line.rstrip())
             toroidal_angles.append(toroidal_angle)
             if len(profile) != 0:
@@ -357,33 +375,102 @@ def ribs_from_kisslinger_format(filename, start_line=3, scale=m2cm):
             profile.append([x_coord, y_coord, z_coord])
     profiles.append(profile)
 
-    return toroidal_angles, np.array(profiles)
+    return (
+        np.array(toroidal_angles),
+        num_toroidal_angles,
+        num_poloidal_angles,
+        periods,
+        np.array(profiles),
+    )
+
+
+def extract_rib_data(
+    ribs, toroidal_angles, poloidal_angles, x_data, y_data, z_data, grid_points
+):
+    for phi, rib in zip(toroidal_angles, ribs):
+        for theta, rib_locus in zip(poloidal_angles, rib):
+            x_data.append(rib_locus[0])
+            y_data.append(rib_locus[1])
+            z_data.append(rib_locus[2])
+            grid_points.append([phi, theta])
+    return x_data, y_data, z_data, grid_points
 
 
 class KisslingerSurface(object):
-    def __init__(self, rib_data):
+    def __init__(self, rib_data, toroidal_angles):
         self.rib_data = rib_data
-        self.toroidal_angles = np.linspace(0, 90, rib_data.shape[0])
+        self.toroidal_angles = toroidal_angles
+        self.num_periods = 360 / toroidal_angles[-1]
         self.poloidal_angles = np.linspace(0, 360, rib_data.shape[1])
 
-    def build_analytic_surface(self):
+    def build_analytic_surface(self, neighbors=100):
+        """Build RBF interpolators for x,y,z coordinates assuming that the
+        provided coordinates are spaced evenly in the poloidal direction"""
         x_data = []
         y_data = []
         z_data = []
         grid_points = []
-        for phi, rib in zip(self.toroidal_angles, self.rib_data):
-            for theta, rib_locus in zip(self.poloidal_angles, rib):
-                x_data.append(rib_locus[0])
-                y_data.append(rib_locus[1])
-                z_data.append(rib_locus[2])
-                grid_points.append([phi, theta])
-        self.rbf_x = RBFInterpolator(grid_points, x_data, kernel="linear")
-        self.rbf_y = RBFInterpolator(grid_points, y_data, kernel="linear")
-        self.rbf_z = RBFInterpolator(grid_points, z_data, kernel="linear")
 
-    def get_loci(self, toroidal_angles, poloidal_angles):
+        # add mock region before region to be modeled so the interpolator
+        # knows about the periodicity
+        rotated_ribs = rotate_ribs(self.rib_data, -max(self.toroidal_angles))[
+            0:-1
+        ]
+        shifted_toroidal_angles = self.toroidal_angles[0:-1] - max(
+            self.toroidal_angles
+        )
+        x_data, y_data, z_data, grid_points = extract_rib_data(
+            rotated_ribs,
+            shifted_toroidal_angles,
+            self.poloidal_angles,
+            x_data,
+            y_data,
+            z_data,
+            grid_points,
+        )
+
+        # add data for the region to be modeled
+        x_data, y_data, z_data, grid_points = extract_rib_data(
+            self.rib_data,
+            self.toroidal_angles,
+            self.poloidal_angles,
+            x_data,
+            y_data,
+            z_data,
+            grid_points,
+        )
+
+        # add mock region after region to be modeled
+        rotated_ribs = rotate_ribs(self.rib_data, max(self.toroidal_angles))[
+            1:
+        ]
+        shifted_toroidal_angles = self.toroidal_angles[1:] + max(
+            self.toroidal_angles
+        )
+
+        x_data, y_data, z_data, grid_points = extract_rib_data(
+            rotated_ribs,
+            shifted_toroidal_angles,
+            self.poloidal_angles,
+            x_data,
+            y_data,
+            z_data,
+            grid_points,
+        )
+
+        self.rbf_x = RBFInterpolator(
+            grid_points, x_data, neighbors=neighbors, kernel="linear"
+        )
+        self.rbf_y = RBFInterpolator(
+            grid_points, y_data, neighbors=neighbors, kernel="linear"
+        )
+        self.rbf_z = RBFInterpolator(
+            grid_points, z_data, neighbors=neighbors, kernel="linear"
+        )
+
+    def get_loci(self, toroidal_angles_interp, poloidal_angles_interp):
         toroidal_grid, polodial_grid = np.meshgrid(
-            toroidal_angles, poloidal_angles, indexing="ij"
+            toroidal_angles_interp, poloidal_angles_interp, indexing="ij"
         )
         grid_shape = toroidal_grid.shape
         grid_points = np.column_stack(
@@ -400,38 +487,3 @@ class KisslingerSurface(object):
         y = locus[1]
         z = locus[2]
         return x, y, z
-
-
-# class KisslingerSurface(object):
-#     def __init__(self, rib_data):
-#         self.rib_data = rib_data
-#         self.toroidal_angles = np.linspace(0, 90, rib_data.shape[0])
-#         self.poloidal_angles = np.linspace(0, 360, rib_data.shape[1])
-
-#     def build_analytic_surface(self):
-#         x_data = []
-#         y_data = []
-#         z_data = []
-#         grid_points = []
-#         for phi, rib in zip(self.toroidal_angles, self.rib_data):
-#             for theta, rib_locus in zip(self.poloidal_angles, rib):
-#                 x_data.append(rib_locus[0])
-#                 y_data.append(rib_locus[1])
-#                 z_data.append(rib_locus[2])
-#                 grid_points.append([phi, theta])
-#         self.rbf_x = RBFInterpolator(grid_points, x_data, kernel="linear")
-#         self.rbf_y = RBFInterpolator(grid_points, y_data, kernel="linear")
-#         self.rbf_z = RBFInterpolator(grid_points, z_data, kernel="linear")
-
-#     def get_loci(self, toroidal_angles, poloidal_angles):
-#         toroidal_grid, polodial_grid = np.meshgrid(
-#             toroidal_angles, poloidal_angles, indexing="ij"
-#         )
-#         grid_shape = toroidal_grid.shape
-#         grid_points = np.column_stack(
-#             (toroidal_grid.ravel(), polodial_grid.ravel())
-#         )
-#         x_points = self.rbf_x(grid_points).reshape(grid_shape)
-#         y_points = self.rbf_y(grid_points).reshape(grid_shape)
-#         z_points = self.rbf_z(grid_points).reshape(grid_shape)
-#         return np.stack((x_points, y_points, z_points), axis=-1)
