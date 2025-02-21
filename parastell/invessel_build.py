@@ -662,9 +662,8 @@ class Rib(object):
 
     def _normals(self):
         """Approximate the normal to the curve at each poloidal angle by first
-        approximating the tangent to the curve and then taking the
-        cross-product of that tangent with a vector defined as normal to the
-        plane at this toroidal angle.
+        approximating the tangent and binormal to the curve and then taking the
+        cross-product of those vectors.
         (Internal function not intended to be called externally)
 
         Arguments:
