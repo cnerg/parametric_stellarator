@@ -3,7 +3,7 @@ from pathlib import Path
 from abc import ABC
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import RegularGridInterpolator, RBFInterpolator
 
 import cadquery as cq
 import pystell.read_vmec as read_vmec
@@ -227,7 +227,10 @@ class InVesselBuild(object):
                 self.scale,
             )
 
-        [surface.populate_ribs() for surface in self.Surfaces.values()]
+        [
+            surface.populate_nonplanar_ribs()
+            for surface in self.Surfaces.values()
+        ]
 
     def calculate_loci(self):
         """Calls calculate_loci method in Surface class for each component
@@ -235,7 +238,16 @@ class InVesselBuild(object):
         """
         self._logger.info("Computing point cloud for in-vessel components...")
 
-        [surface.calculate_loci() for surface in self.Surfaces.values()]
+        [
+            surface.calculate_nonplanar_loci()
+            for surface in self.Surfaces.values()
+        ]
+        [
+            surface.generate_interpolators()
+            for surface in self.Surfaces.values()
+        ]
+        [surface.populate_planar_ribs() for surface in self.Surfaces.values()]
+        [surface.calculate_planar_loci() for surface in self.Surfaces.values()]
 
     def generate_components(self):
         if self.use_pydagmc:
@@ -321,7 +333,9 @@ class InVesselBuild(object):
         first_surface = surfaces[0]
         for surface in surfaces:
             mb_tris = []
-            for rib, next_rib in zip(surface.Ribs[0:-1], surface.Ribs[1:]):
+            for rib, next_rib in zip(
+                surface.planar_ribs[0:-1], surface.planar_ribs[1:]
+            ):
                 mb_tris += self._connect_ribs_with_tris_moab(
                     rib,
                     next_rib,
@@ -344,8 +358,8 @@ class InVesselBuild(object):
             end_cap_pair = []
             for index in (0, -1):
                 mb_tris = self._connect_ribs_with_tris_moab(
-                    surface.Ribs[index],
-                    next_surface.Ribs[index],
+                    surface.planar_ribs[index],
+                    next_surface.planar_ribs[index],
                     reverse=(index == -1),
                 )
                 end_cap = self.dag_model.create_surface()
@@ -563,12 +577,10 @@ class Surface(object):
 
         self.surface = None
 
-    def populate_ribs(self):
-        """Populates Rib class objects for each toroidal angle specified in
-        the surface.
-        """
-        self.Ribs = [
-            Rib(
+    def populate_nonplanar_ribs(self):
+        """"""
+        self.nonplanar_ribs = [
+            NonPlanarRib(
                 self.vmec_obj,
                 self.s,
                 self.theta_list,
@@ -579,9 +591,119 @@ class Surface(object):
             for i, phi in enumerate(self.phi_list)
         ]
 
-    def calculate_loci(self):
-        """Calls calculate_loci method in Rib class for each rib in the surface."""
-        [rib.calculate_loci() for rib in self.Ribs]
+    def calculate_nonplanar_loci(self):
+        """Calls calculate_loci method in NonPlanarRib class for each
+        non-planar rib in the surface.
+        """
+        [rib.calculate_loci() for rib in self.nonplanar_ribs]
+
+    def generate_interpolators(self):
+        x_data = np.array([rib.rib_loci[:, 0] for rib in self.nonplanar_ribs])
+        y_data = np.array([rib.rib_loci[:, 1] for rib in self.nonplanar_ribs])
+        z_data = np.array([rib.rib_loci[:, 2] for rib in self.nonplanar_ribs])
+
+        phi_list = np.arctan2(y_data, x_data)
+        theta_list = np.tile(self.theta_list, len(self.nonplanar_ribs))
+
+        all_x = []
+        all_y = []
+        all_z = []
+        all_points = []
+
+        # Add mock quarter-period before period to full list of training data
+        region_phi_list = phi_list.flatten() - max(self.phi_list)
+        region_x = x_data.flatten() * np.cos(
+            -max(self.phi_list)
+        ) - y_data.flatten() * np.sin(-max(self.phi_list))
+        region_y = x_data.flatten() * np.sin(
+            -max(self.phi_list)
+        ) + y_data.flatten() * np.cos(-max(self.phi_list))
+        region_z = z_data.flatten()
+
+        start_id = 3 * int(len(phi_list.flatten()) / 4)
+        end_id = len(phi_list.flatten()) - len(self.theta_list)
+
+        for i in range(start_id, end_id):
+            all_x.append(region_x[i])
+            all_y.append(region_y[i])
+            all_z.append(region_z[i])
+            all_points.append([region_phi_list[i], theta_list[i]])
+
+        # Add period to training data
+        region_phi_list = phi_list.flatten()
+        region_x = x_data.flatten()
+        region_y = y_data.flatten()
+        region_z = z_data.flatten()
+
+        start_id = 0
+        end_id = len(phi_list.flatten())
+
+        for i in range(start_id, end_id):
+            all_x.append(region_x[i])
+            all_y.append(region_y[i])
+            all_z.append(region_z[i])
+            all_points.append([region_phi_list[i], theta_list[i]])
+
+        # Add mock quarter-period after period to full list of training data
+        region_phi_list = phi_list.flatten() + max(self.phi_list)
+        region_x = x_data.flatten() * np.cos(
+            max(self.phi_list)
+        ) - y_data.flatten() * np.sin(max(self.phi_list))
+        region_y = x_data.flatten() * np.sin(
+            max(self.phi_list)
+        ) + y_data.flatten() * np.cos(max(self.phi_list))
+        region_z = z_data.flatten()
+
+        start_id = len(self.theta_list)
+        end_id = int(len(phi_list.flatten()) / 4) + 1
+
+        for i in range(start_id, end_id):
+            all_x.append(region_x[i])
+            all_y.append(region_y[i])
+            all_z.append(region_z[i])
+            all_points.append([region_phi_list[i], theta_list[i]])
+
+        print(np.array(all_points).shape)
+        print(np.array(all_x).shape)
+        print(np.array(all_y).shape)
+        print(np.array(all_z).shape)
+
+        self.x_interpolator = RBFInterpolator(
+            all_points,
+            all_x,
+            kernel="linear",
+        )
+        self.y_interpolator = RBFInterpolator(
+            all_points,
+            all_y,
+            kernel="linear",
+        )
+        self.z_interpolator = RBFInterpolator(
+            all_points,
+            all_z,
+            kernel="linear",
+        )
+
+    def populate_planar_ribs(self):
+        """Populates Rib class objects for each toroidal angle specified in
+        the surface.
+        """
+        self.planar_ribs = [
+            PlanarRib(
+                self.theta_list,
+                phi,
+                self.x_interpolator,
+                self.y_interpolator,
+                self.z_interpolator,
+            )
+            for phi in self.phi_list
+        ]
+
+    def calculate_planar_loci(self):
+        """Calls calculate_loci method in PlanarRib class for each planar rib
+        in the surface.
+        """
+        [rib.calculate_loci() for rib in self.planar_ribs]
 
     def _generate_pymoab_verts(self, mbc):
         """Generate MBTVERTEX entities from rib loci in all ribs.
@@ -590,26 +712,90 @@ class Surface(object):
             mbc (PyMOAB Core): PyMOAB Core instance to add the MBVERTEX
                 entities to.
         """
-        [rib._generate_pymoab_verts(mbc) for rib in self.Ribs]
+        [rib._generate_pymoab_verts(mbc) for rib in self.planar_ribs]
 
     def generate_surface(self):
         """Constructs a surface by lofting across a set of rib splines."""
         if not self.surface:
             self.surface = cq.Solid.makeLoft(
-                [rib.generate_rib() for rib in self.Ribs]
+                [rib.generate_rib() for rib in self.planar_ribs]
             )
 
         return self.surface
 
     def get_loci(self):
         """Returns the set of point-loci defining the ribs in the surface."""
-        return np.array([rib.rib_loci for rib in self.Ribs])
+        return np.array([rib.rib_loci for rib in self.planar_ribs])
 
 
-class Rib(ABC):
-    """An object representing a curve formed by interpolating a spline through
-    a set of points located in the same toroidal plane but differing poloidal
-    angles and offset from a reference curve.
+class PlanarRib(object):
+    """An object representing a planar curve formed by interpolating a spline
+    through a set of points located in the same toroidal plane but differing
+    poloidal angles and offset from a reference curve.
+
+    Arguments:
+        _interpolator (object):
+    """
+
+    def __init__(
+        self, theta_list, phi, x_interpolator, y_interpolator, z_interpolator
+    ):
+
+        self.theta_list = theta_list
+        self.phi = phi
+        self.x_interpolator = x_interpolator
+        self.y_interpolator = y_interpolator
+        self.z_interpolator = z_interpolator
+
+    def calculate_loci(self):
+        """Generates Cartesian point-loci for stellarator rib."""
+        grid_points = [
+            [phi, theta]
+            for phi, theta in zip(
+                np.repeat(self.phi, len(self.theta_list)), self.theta_list
+            )
+        ]
+
+        x_points = self.x_interpolator(grid_points)
+        y_points = self.y_interpolator(grid_points)
+        z_points = self.z_interpolator(grid_points)
+
+        self.rib_loci = np.array(
+            [[x, y, z] for x, y, z in zip(x_points, y_points, z_points)]
+        )
+
+    def _generate_pymoab_verts(self, mbc):
+        """Converts point-loci to MBVERTEX and adds them to a PyMOAB
+        Core instance. The first and last rib loci are identical. To avoid
+        having separate MBVERTEX entities which are coincident, the last
+        element in rib_loci is not made into an MBVERTEX, and the entity
+        handle corresponding to the first rib locus is appended to the array
+        of MBVERTEX, closing the loop.
+
+        Arguments:
+            mbc (PyMOAB Core): PyMOAB Core instance to add the MBVERTEX
+                entities to.
+        """
+        self.mb_verts = mbc.create_vertices(
+            self.rib_loci[0:-1].flatten()
+        ).to_array()
+        self.mb_verts = np.append(self.mb_verts, self.mb_verts[0])
+
+    def generate_rib(self):
+        """Constructs component rib by constructing a spline connecting all
+        specified Cartesian point-loci.
+        """
+        rib_loci = [cq.Vector(tuple(r)) for r in self.rib_loci]
+        spline = cq.Edge.makeSpline(rib_loci).close()
+        rib_spline = cq.Wire.assembleEdges([spline]).close()
+
+        return rib_spline
+
+
+class NonPlanarRib(object):
+    """An object representing a non-planar curve formed by interpolating a
+    spline through a set of points offset from a reference surface along its
+    normal.
 
     Arguments:
         vmec_obj (object): plasma equilibrium VMEC object as defined by the
@@ -640,8 +826,8 @@ class Rib(ABC):
 
     def _vmec2xyz(self, toroidal_offset=0, poloidal_offset=0):
         """Return an N x 3 NumPy array containing the Cartesian coordinates of
-        the points at this toroidal angle and N different poloidal angles, each
-        offset slightly.
+        the points offset from this toroidal angle and N different poloidal
+        angles, each offset slightly.
         (Internal function not intended to be called externally)
 
         Arguments:
@@ -661,137 +847,33 @@ class Rib(ABC):
             ]
         )
 
+    def _normals(self):
+        """Approximate the normal to the curve at each poloidal angle by first
+        approximating the tangent and binormal to the curve and then taking the
+        cross-product of those vectors.
+        (Internal function not intended to be called externally)
+
+        Arguments:
+            r_loci (np.array(double)): Cartesian point-loci of reference
+                surface rib [cm].
+        """
+        eps = 1e-4
+        perturbed_phi_loci = self._vmec2xyz(toroidal_offset=eps)
+        perturbed_theta_loci = self._vmec2xyz(poloidal_offset=eps)
+
+        binormals = perturbed_phi_loci - self.rib_loci
+        tangents = perturbed_theta_loci - self.rib_loci
+
+        normals = np.cross(binormals, tangents)
+
+        return normalize(normals)
+
     def calculate_loci(self):
         """Generates Cartesian point-loci for stellarator rib."""
         self.rib_loci = self._vmec2xyz()
 
         if not np.all(self.offset_list == 0):
             self.rib_loci += self.offset_list[:, np.newaxis] * self._normals()
-
-    def _generate_pymoab_verts(self, mbc):
-        """Converts point-loci to MBVERTEX and adds them to a PyMOAB
-        Core instance. The first and last rib loci are identical. To avoid
-        having separate MBVERTEX entities which are coincident, the last
-        element in rib_loci is not made into an MBVERTEX, and the entity
-        handle corresponding to the first rib locus is appended to the array
-        of MBVERTEX, closing the loop.
-
-        Arguments:
-            mbc (PyMOAB Core): PyMOAB Core instance to add the MBVERTEX
-                entities to.
-        """
-        self.mb_verts = mbc.create_vertices(
-            self.rib_loci[0:-1].flatten()
-        ).to_array()
-        self.mb_verts = np.append(self.mb_verts, self.mb_verts[0])
-
-    def generate_rib(self):
-        """Constructs component rib by constructing a spline connecting all
-        specified Cartesian point-loci.
-        """
-        rib_loci = [cq.Vector(tuple(r)) for r in self.rib_loci]
-        spline = cq.Edge.makeSpline(rib_loci).close()
-        rib_spline = cq.Wire.assembleEdges([spline]).close()
-
-        return rib_spline
-
-
-class PlanarRib(Rib):
-    """Inherits from Rib. This subclass represents a planar curve formed by
-    interpolating a spline through a set of points located in the same toroidal
-    plane but differing poloidal angles and offset from a reference curve.
-
-    Arguments:
-        vmec_obj (object): plasma equilibrium VMEC object as defined by the
-            PyStell-UW VMEC reader. Must have a method
-            'vmec2xyz(s, theta, phi)' that returns an (x,y,z) coordinate for
-            any closed flux surface label, s, poloidal angle, theta, and
-            toroidal angle, phi.
-        s (float): the normalized closed flux surface label defining the point
-            of reference for offset.
-        phi (np.array(double)): the toroidal angle defining the plane in which
-            the rib is located [rad].
-        theta_list (np.array(double)): the set of poloidal angles specified for
-            the rib [rad].
-        offset_list (np.array(double)): the set of offsets from the curve
-            defined by s for each toroidal angle, poloidal angle pair in the rib
-            [cm].
-        scale (float): a scaling factor between the units of VMEC and [cm].
-    """
-
-    def __init__(self, vmec_obj, s, theta_list, phi, offset_list, scale):
-
-        super().__init__(vmec_obj, s, theta_list, phi, offset_list, scale)
-
-    def _normals(self):
-        """Approximate the normal to the curve at each poloidal angle by first
-        approximating the tangent and binormal to the curve and then taking the
-        cross-product of those vectors.
-        (Internal function not intended to be called externally)
-
-        Arguments:
-            r_loci (np.array(double)): Cartesian point-loci of reference
-                surface rib [cm].
-        """
-        eps = 1e-4
-        perturbed_phi_loci = self._vmec2xyz(toroidal_offset=eps)
-        perturbed_theta_loci = self._vmec2xyz(poloidal_offset=eps)
-
-        binormals = perturbed_phi_loci - self.rib_loci
-        tangents = perturbed_theta_loci - self.rib_loci
-
-        normals = np.cross(binormals, tangents)
-
-        return normalize(normals)
-
-
-class NonPlanarRib(Rib):
-    """Inherits from Rib. This subclass represents a planar curve formed by
-    interpolating a spline through a set of points offset from a reference
-    surface along its normal.
-
-    Arguments:
-        vmec_obj (object): plasma equilibrium VMEC object as defined by the
-            PyStell-UW VMEC reader. Must have a method
-            'vmec2xyz(s, theta, phi)' that returns an (x,y,z) coordinate for
-            any closed flux surface label, s, poloidal angle, theta, and
-            toroidal angle, phi.
-        s (float): the normalized closed flux surface label defining the point
-            of reference for offset.
-        phi (np.array(double)): the toroidal angle defining the plane in which
-            the rib is located [rad].
-        theta_list (np.array(double)): the set of poloidal angles specified for
-            the rib [rad].
-        offset_list (np.array(double)): the set of offsets from the curve
-            defined by s for each toroidal angle, poloidal angle pair in the rib
-            [cm].
-        scale (float): a scaling factor between the units of VMEC and [cm].
-    """
-
-    def __init__(self, vmec_obj, s, theta_list, phi, offset_list, scale):
-
-        super().__init__(vmec_obj, s, theta_list, phi, offset_list, scale)
-
-    def _normals(self):
-        """Approximate the normal to the curve at each poloidal angle by first
-        approximating the tangent and binormal to the curve and then taking the
-        cross-product of those vectors.
-        (Internal function not intended to be called externally)
-
-        Arguments:
-            r_loci (np.array(double)): Cartesian point-loci of reference
-                surface rib [cm].
-        """
-        eps = 1e-4
-        perturbed_phi_loci = self._vmec2xyz(toroidal_offset=eps)
-        perturbed_theta_loci = self._vmec2xyz(poloidal_offset=eps)
-
-        binormals = perturbed_phi_loci - self.rib_loci
-        tangents = perturbed_theta_loci - self.rib_loci
-
-        normals = np.cross(binormals, tangents)
-
-        return normalize(normals)
 
 
 class RadialBuild(object):
