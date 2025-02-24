@@ -125,18 +125,14 @@ class VMECSurface(ReferenceSurface):
         for toroidal_angle, poloidal_angle in zip(
             toroidal_angles, poloidal_angles
         ):
-            coords.append(
-                self.vmec_obj.vmec2xyz(s, poloidal_angle, toroidal_angle)
-                * scale
-            )
-        return np.array(coords)
+            x, y, z = self.vmec_obj.vmec2xyz(s, poloidal_angle, toroidal_angle)
+            coords.append([x, y, z])
+        return np.array(coords) * scale
 
 
 class RibBasedSurface(ReferenceSurface):
     """An object that uses closed loops of loci (ribs) on planes of constant
     toroidal angle to approximate the innermost surface of an in vessel build
-
-
     """
 
     def __init__(self, rib_data, toroidal_angles, poloidal_angles):
@@ -847,6 +843,7 @@ class Rib(object):
     def calculate_loci(self):
         """Generates Cartesian point-loci for stellarator rib."""
         self.rib_loci = self._calculate_cartesian_coordinates()
+        print(self.rib_loci.shape)
         if not np.all(self.offset_list == 0):
             self.rib_loci += self.offset_list[:, np.newaxis] * self._normals()
 

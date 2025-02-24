@@ -51,10 +51,10 @@ def radial_build():
 @pytest.fixture
 def invessel_build(radial_build):
     vmec_file = Path("files_for_tests") / "wout_vmec.nc"
-    vmec = read_vmec.VMECData(vmec_file)
+    ref_surf = ivb.VMECSurface(read_vmec.VMECData(vmec_file))
     num_ribs = 11
 
-    ivb_obj = ivb.InVesselBuild(vmec, radial_build, num_ribs=num_ribs)
+    ivb_obj = ivb.InVesselBuild(ref_surf, radial_build, num_ribs=num_ribs)
 
     return ivb_obj
 

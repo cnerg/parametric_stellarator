@@ -47,6 +47,8 @@ class Stellarator(object):
 
     Arguments:
         vmec_file (str): path to plasma equilibrium VMEC file.
+        ref_surf (object): ivb.ReferenceSurface object. Represents the
+            innermost surface from which the in vessel components are built.
         logger (object): logger object (optional, defaults to None). If no
             logger is supplied, a default logger will be instantiated.
     """
@@ -55,7 +57,6 @@ class Stellarator(object):
 
         self.logger = logger
         self.vmec_file = vmec_file
-
         self.invessel_build = None
         self.magnet_set = None
         self.source_mesh = None
@@ -69,9 +70,19 @@ class Stellarator(object):
         self._vmec_file = file
         try:
             self._vmec_obj = read_vmec.VMECData(self._vmec_file)
+            self._ref_surf = ivb.VMECSurface(self._vmec_obj)
+
         except Exception as e:
             self._logger.error(e.args[0])
             raise e
+
+    @property
+    def ref_surf(self):
+        return self._ref_surf
+
+    @ref_surf.setter
+    def ref_surf(self, ref_surf_obj):
+        self._ref_surf = ref_surf_obj
 
     @property
     def logger(self):
@@ -160,9 +171,8 @@ class Stellarator(object):
             logger=self._logger,
             **kwargs,
         )
-
         self.invessel_build = ivb.InVesselBuild(
-            self._vmec_obj, self.radial_build, logger=self._logger, **kwargs
+            self._ref_surf, self.radial_build, logger=self._logger, **kwargs
         )
         self.use_pydagmc = self.invessel_build.use_pydagmc
         self.invessel_build.populate_surfaces()
