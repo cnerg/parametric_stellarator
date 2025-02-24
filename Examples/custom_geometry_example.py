@@ -1,6 +1,7 @@
 import parastell.invessel_build as ivb
-from parastell.utils import ribs_from_kisslinger_format, KisslingerSurface
+from parastell.utils import ribs_from_kisslinger_format
 import numpy as np
+import pystell.read_vmec as read_vmec
 
 (
     toroidal_angles,
@@ -9,8 +10,11 @@ import numpy as np
     periods,
     custom_ribs,
 ) = ribs_from_kisslinger_format("wistd_1m_alpha10.txt", scale=1)
-ks = KisslingerSurface(custom_ribs, toroidal_angles)
+poloidal_angles = np.linspace(0, 360, num_poloidal_angles)
+ks = ivb.RibBasedSurface(custom_ribs, toroidal_angles, poloidal_angles)
 ks.build_analytic_surface()
+vmec_obj = read_vmec.VMECData("plasma_wistelld.nc")
+vs = ivb.VMECSurface(vmec_obj)
 
 toroidal_angles = np.linspace(0, 90, 64)
 poloidal_angles = np.linspace(0, 360, 64)

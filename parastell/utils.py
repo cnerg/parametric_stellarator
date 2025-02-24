@@ -6,7 +6,7 @@ from functools import cached_property
 import numpy as np
 import math
 from scipy.ndimage import gaussian_filter
-from scipy.interpolate import RBFInterpolator, griddata
+from scipy.interpolate import RBFInterpolator
 from pymoab import core, types
 import dagmc
 
@@ -377,113 +377,8 @@ def ribs_from_kisslinger_format(filename, start_line=2, scale=m2cm):
 
     return (
         np.array(toroidal_angles),
-        num_toroidal_angles,
-        num_poloidal_angles,
-        periods,
+        int(num_toroidal_angles),
+        int(num_poloidal_angles),
+        int(periods),
         np.array(profiles),
     )
-
-
-def extract_rib_data(
-    ribs, toroidal_angles, poloidal_angles, x_data, y_data, z_data, grid_points
-):
-    for phi, rib in zip(toroidal_angles, ribs):
-        for theta, rib_locus in zip(poloidal_angles, rib):
-            x_data.append(rib_locus[0])
-            y_data.append(rib_locus[1])
-            z_data.append(rib_locus[2])
-            grid_points.append([phi, theta])
-    return x_data, y_data, z_data, grid_points
-
-
-class KisslingerSurface(object):
-    def __init__(self, rib_data, toroidal_angles):
-        self.rib_data = rib_data
-        self.toroidal_angles = toroidal_angles
-        self.num_periods = 360 / toroidal_angles[-1]
-        self.poloidal_angles = np.linspace(0, 360, rib_data.shape[1])
-
-    def build_analytic_surface(self, neighbors=100):
-        """Build RBF interpolators for x,y,z coordinates assuming that the
-        provided coordinates are spaced evenly in the poloidal direction"""
-        x_data = []
-        y_data = []
-        z_data = []
-        grid_points = []
-
-        # add mock region before region to be modeled so the interpolator
-        # knows about the periodicity
-        rotated_ribs = rotate_ribs(self.rib_data, -max(self.toroidal_angles))[
-            0:-1
-        ]
-        shifted_toroidal_angles = self.toroidal_angles[0:-1] - max(
-            self.toroidal_angles
-        )
-        x_data, y_data, z_data, grid_points = extract_rib_data(
-            rotated_ribs,
-            shifted_toroidal_angles,
-            self.poloidal_angles,
-            x_data,
-            y_data,
-            z_data,
-            grid_points,
-        )
-
-        # add data for the region to be modeled
-        x_data, y_data, z_data, grid_points = extract_rib_data(
-            self.rib_data,
-            self.toroidal_angles,
-            self.poloidal_angles,
-            x_data,
-            y_data,
-            z_data,
-            grid_points,
-        )
-
-        # add mock region after region to be modeled
-        rotated_ribs = rotate_ribs(self.rib_data, max(self.toroidal_angles))[
-            1:
-        ]
-        shifted_toroidal_angles = self.toroidal_angles[1:] + max(
-            self.toroidal_angles
-        )
-
-        x_data, y_data, z_data, grid_points = extract_rib_data(
-            rotated_ribs,
-            shifted_toroidal_angles,
-            self.poloidal_angles,
-            x_data,
-            y_data,
-            z_data,
-            grid_points,
-        )
-
-        self.rbf_x = RBFInterpolator(
-            grid_points, x_data, neighbors=neighbors, kernel="linear"
-        )
-        self.rbf_y = RBFInterpolator(
-            grid_points, y_data, neighbors=neighbors, kernel="linear"
-        )
-        self.rbf_z = RBFInterpolator(
-            grid_points, z_data, neighbors=neighbors, kernel="linear"
-        )
-
-    def get_loci(self, toroidal_angles_interp, poloidal_angles_interp):
-        toroidal_grid, polodial_grid = np.meshgrid(
-            toroidal_angles_interp, poloidal_angles_interp, indexing="ij"
-        )
-        grid_shape = toroidal_grid.shape
-        grid_points = np.column_stack(
-            (toroidal_grid.ravel(), polodial_grid.ravel())
-        )
-        x_points = self.rbf_x(grid_points).reshape(grid_shape)
-        y_points = self.rbf_y(grid_points).reshape(grid_shape)
-        z_points = self.rbf_z(grid_points).reshape(grid_shape)
-        return np.stack((x_points, y_points, z_points), axis=-1)
-
-    def vmec2xyz(self, s, theta, phi):
-        locus = self.get_loci(np.rad2deg(phi), np.rad2deg(theta))[0][0]
-        x = locus[0]
-        y = locus[1]
-        z = locus[2]
-        return x, y, z
