@@ -885,7 +885,6 @@ class Rib(object):
     def calculate_loci(self):
         """Generates Cartesian point-loci for stellarator rib."""
         self.rib_loci = self._calculate_cartesian_coordinates()
-        print(self.rib_loci.shape)
         if not np.all(self.offset_list == 0):
             self.rib_loci += self.offset_list[:, np.newaxis] * self._normals()
 
