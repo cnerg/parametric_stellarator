@@ -1,12 +1,10 @@
 import yaml
 import tempfile
-from pathlib import Path
 from functools import cached_property
 
 import numpy as np
 import math
 from scipy.ndimage import gaussian_filter
-from scipy.interpolate import RBFInterpolator
 from pymoab import core, types
 import dagmc
 
@@ -316,7 +314,21 @@ def combine_dagmc_models(models_to_merge):
 
 def rotate_ribs(ribs, angle):
     """Rotate a set of NxMx3 set of loci about the Z axis in the
-    counter-clockwise direction"""
+    counter-clockwise direction.
+
+    Arguments:
+        ribs (numpy array): NxMx3 array of of cartesian points. The first
+            dimension corresponds to the plane of constant toroidal angle on
+            which the closed loop of points lies. The second dimension is the
+            location on the closed loop at which the point lies, and the third
+            dimension is the x,y,z value of that point.
+        angle (float): Amount by which to rotate the points in ribs. Measured
+            in degrees, positive in right hand direction about the Z axis.
+
+    Return:
+        ribs (numpy array): Array of the same shape as the ribs argument,
+            with each point rotated by angle about the Z axis.
+    """
     angle = np.deg2rad(angle)
     rotation_mat = np.array(
         [
@@ -337,15 +349,19 @@ def ribs_from_kisslinger_format(filename, start_line=2, scale=m2cm):
     Arguments:
         filename (str): Path to the file to be read.
         start_line (int): Line at which the data should start being read,
-            should skip any comments. Defaults to 2.
+            Defaults to 2.
         scale (float): Amount to scale the r-z coordinates by. Defaults to 100.
     Returns:
-        toroidal_angles (list of float): List of all the toroidal angles in the
+        toroidal_angles (numpy array): Toroidal angles in the
             angles in the input file in degrees.
+        num_toroidal_angles (int): Number of toroidal angles as specified in
+            the file header.
+        num_poloidal_angles (int): Number of points at each toroidal angle.
+        periods (int): Number of periods as specified in the file header.
         profiles (numpy array): 3 dimensional numpy array where the first
             dimension corresponds to individual ribs, the second to the
             position on a rib, and the third to the actual x,y,z coordinate
-            of the locus.
+            of the point.
     """
 
     with open(file=filename) as file:

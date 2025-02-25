@@ -46,9 +46,10 @@ class Stellarator(object):
     VMEC data and a structured, uniform grid in magnetic flux space.
 
     Arguments:
-        vmec_file (str): path to plasma equilibrium VMEC file.
-        ref_surf (object): ivb.ReferenceSurface object. Represents the
-            innermost surface from which the in vessel components are built.
+        vmec_file (str): path to plasma equilibrium VMEC file. Used to define
+            the source mesh, and if no other reference surface is provided,
+            defines the innermost surface from which in vessel components are
+            built.
         logger (object): logger object (optional, defaults to None). If no
             logger is supplied, a default logger will be instantiated.
     """
