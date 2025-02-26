@@ -1,10 +1,14 @@
 import parastell.invessel_build as ivb
 import parastell.parastell as ps
+from parastell.utils import ribs_from_kisslinger_format
 import numpy as np
 
 # Get a predefined set of points representing the first wall.
 custom_surface_ribs = np.load(
     "../tests/files_for_tests/custom_surface_ribs.npy"
+)
+_, _, _, _, custom_surface_ribs = ribs_from_kisslinger_format(
+    "wistd_1m_alpha10.txt"
 )
 # For this example, the ribs and points on the ribs are evenly spaced, which
 # is not required.
@@ -32,8 +36,8 @@ toroidal_angles = [0.0, 11.25, 22.5, 33.75, 45.0, 56.25, 67.5, 78.75, 90.0]
 poloidal_angles = [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0, 360.0]
 wall_s = 1.08
 # Use more points in the point cloud to smooth the ivb components
-num_ribs = 64
-num_rib_pts = 128
+num_ribs = 100
+num_rib_pts = 100
 
 # Define a matrix of uniform unit thickness
 uniform_unit_thickness = np.ones((len(toroidal_angles), len(poloidal_angles)))
@@ -92,3 +96,4 @@ stellarator.build_pydagmc_model(
     magnet_exporter="cad_to_dagmc", max_mesh_size=60
 )
 stellarator.export_pydagmc_model(filename="dagmc")
+stellarator.invessel_build.dag_model.write_file("ivb.vtk")

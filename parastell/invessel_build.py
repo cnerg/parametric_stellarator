@@ -148,11 +148,11 @@ class RibBasedSurface(ReferenceSurface):
         neighbors (int): Number of neighbors to use when constructing the
             Radial Basis Function interpolator. If set to None, all points in
             rib_data will be used. This may require a large amount of memory.
-            Defaults to 100.
+            Defaults to 400. More neighbors results in a better fit.
     """
 
     def __init__(
-        self, rib_data, toroidal_angles, poloidal_angles, neighbors=100
+        self, rib_data, toroidal_angles, poloidal_angles, neighbors=800
     ):
         self.rib_data = rib_data
         self.toroidal_angles = toroidal_angles
@@ -167,7 +167,7 @@ class RibBasedSurface(ReferenceSurface):
                 self.z_data.append(rib_locus[2])
                 self.grid_points.append([phi, theta])
 
-    def build_analytic_surface(self, neighbors=100):
+    def build_analytic_surface(self, neighbors=400):
         """Build RBF interpolators for x,y,z coordinates using provided
         rib_data, toroidal_angles, and poloidal_angles.
 
@@ -175,7 +175,7 @@ class RibBasedSurface(ReferenceSurface):
             neighbors (int): Number of neighbors to use when constructing the
                 Radial Basis Function interpolator. If set to None, all points
                 in rib_data will be used. This may require a large amount of
-                memory. Defaults to 100.
+                memory. Defaults to 400.
         """
         self.x_data = []
         self.y_data = []
@@ -184,6 +184,8 @@ class RibBasedSurface(ReferenceSurface):
 
         # add mock region before region to be modeled so the interpolator
         # knows about the periodicity
+
+        # Toroidal Periodicity
         rotated_ribs = rotate_ribs(self.rib_data, -max(self.toroidal_angles))[
             0:-1
         ]
@@ -194,6 +196,15 @@ class RibBasedSurface(ReferenceSurface):
             rotated_ribs, shifted_toroidal_angles, self.poloidal_angles
         )
 
+        # Poloidal Periodicity
+        shifted_poloidal_angles = self.poloidal_angles[0:-1] - max(
+            self.poloidal_angles
+        )
+        rib_subset = self.rib_data[:, 0:-1, :]
+        self._extract_rib_data(
+            rib_subset, self.toroidal_angles, shifted_poloidal_angles
+        )
+
         # add data for the region to be modeled
         self._extract_rib_data(
             self.rib_data,
@@ -202,6 +213,7 @@ class RibBasedSurface(ReferenceSurface):
         )
 
         # add mock region after region to be modeled
+        # Toroidal Periodicity
         rotated_ribs = rotate_ribs(self.rib_data, max(self.toroidal_angles))[
             1:
         ]
@@ -215,14 +227,35 @@ class RibBasedSurface(ReferenceSurface):
             self.poloidal_angles,
         )
 
+        # Poloidal Periodicity
+        shifted_poloidal_angles = self.poloidal_angles[1:] + max(
+            self.poloidal_angles
+        )
+        rib_subset = self.rib_data[:, 1:, :]
+        self._extract_rib_data(
+            rib_subset, self.toroidal_angles, shifted_poloidal_angles
+        )
+
         self.rbf_x = RBFInterpolator(
-            self.grid_points, self.x_data, neighbors=neighbors, kernel="linear"
+            self.grid_points,
+            self.x_data,
+            neighbors=neighbors,
+            kernel="linear",
+            degree=-1,
         )
         self.rbf_y = RBFInterpolator(
-            self.grid_points, self.y_data, neighbors=neighbors, kernel="linear"
+            self.grid_points,
+            self.y_data,
+            neighbors=neighbors,
+            kernel="linear",
+            degree=-1,
         )
         self.rbf_z = RBFInterpolator(
-            self.grid_points, self.z_data, neighbors=neighbors, kernel="linear"
+            self.grid_points,
+            self.z_data,
+            neighbors=neighbors,
+            kernel="linear",
+            degree=-1,
         )
 
         self.interpolators = [self.rbf_x, self.rbf_y, self.rbf_z]
