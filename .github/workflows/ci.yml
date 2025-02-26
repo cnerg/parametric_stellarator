@@ -24,8 +24,16 @@ jobs:
           . /opt/etc/bashrc
           sed -e "s/@SERVER@/${rlmSERVER}/" -e "s/@PASSWORD@/${rlmPASSWD}/" /opt/Coreform-Cubit-2024.8/bin/licenses/rlmcloud.in > /opt/Coreform-Cubit-2024.8/bin/licenses/rlmcloud.lic
           export PYTHONPATH=${PYTHONPATH}:`pwd`
-          cd tests
-          pytest -v .
+          pip install -U coverage
+          coverage run --source=./parastell/ -m pytest
+          coverage lcov
         env:
           rlmSERVER: ${{ secrets.RLMSERVER }}
           rlmPASSWD: ${{ secrets.RLMPASSWORD }}
+
+      - name: upload coverage
+        uses: coverallsapp/github-action@master
+        with:
+          path-to-lcov: ./coverage.lcov
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: coverage report
