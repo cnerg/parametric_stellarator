@@ -1,9 +1,16 @@
 import argparse
 from pathlib import Path
 from abc import ABC
+from itertools import cycle
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator, RBFInterpolator
+from scipy.interpolate import (
+    RegularGridInterpolator,
+    RBFInterpolator,
+    griddata,
+    LinearNDInterpolator,
+    CloughTocher2DInterpolator,
+)
 
 import cadquery as cq
 import pystell.read_vmec as read_vmec
@@ -25,6 +32,12 @@ from .utils import (
     rotate_ribs,
     m2cm,
 )
+
+vertex_angle_tag = "angle_data"
+vertex_index_tag = "index_data"
+tag_size = 2  # Two floats per vertex
+double_type = types.MB_TYPE_DOUBLE
+integer_type = types.MB_TYPE_INTEGER
 
 
 def create_moab_tris_from_verts(corners, mbc, reverse=False):
@@ -235,28 +248,25 @@ class RibBasedSurface(ReferenceSurface):
         self._extract_rib_data(
             rib_subset, self.toroidal_angles, shifted_poloidal_angles
         )
-
-        self.rbf_x = RBFInterpolator(
-            self.grid_points,
-            self.x_data,
-            neighbors=neighbors,
-            kernel="linear",
-            degree=-1,
-        )
-        self.rbf_y = RBFInterpolator(
-            self.grid_points,
-            self.y_data,
-            neighbors=neighbors,
-            kernel="linear",
-            degree=-1,
-        )
-        self.rbf_z = RBFInterpolator(
-            self.grid_points,
-            self.z_data,
-            neighbors=neighbors,
-            kernel="linear",
-            degree=-1,
-        )
+        self.rbf_x = CloughTocher2DInterpolator(self.grid_points, self.x_data)
+        self.rbf_y = CloughTocher2DInterpolator(self.grid_points, self.y_data)
+        self.rbf_z = CloughTocher2DInterpolator(self.grid_points, self.z_data)
+        # method = "linear"
+        # self.rbf_x = RegularGridInterpolator(
+        #     (self.grid_points[0], self.grid_points[1]),
+        #     self.x_data,
+        #     method=method,
+        # )
+        # self.rbf_y = RegularGridInterpolator(
+        #     (self.grid_points[0], self.grid_points[1]),
+        #     self.y_data,
+        #     method=method,
+        # )
+        # self.rbf_z = RegularGridInterpolator(
+        #     (self.grid_points[0], self.grid_points[1]),
+        #     self.z_data,
+        #     method=method,
+        # )
 
         self.interpolators = [self.rbf_x, self.rbf_y, self.rbf_z]
 
@@ -285,12 +295,10 @@ class RibBasedSurface(ReferenceSurface):
         for toroidal_angle, poloidal_angle in zip(
             toroidal_angles, poloidal_angles
         ):
-            coords.append(
-                [
-                    interp([[toroidal_angle, poloidal_angle]])[0]
-                    for interp in self.interpolators
-                ]
-            )
+            x = self.rbf_x(toroidal_angle, poloidal_angle)
+            y = self.rbf_y(toroidal_angle, poloidal_angle)
+            z = self.rbf_z(toroidal_angle, poloidal_angle)
+            coords.append([x, y, z])
         return np.array(coords) * scale
 
 
@@ -812,6 +820,7 @@ class Surface(object):
                 phi,
                 self.offset_mat[i, :],
                 self.scale,
+                i,
             )
             for i, phi in enumerate(self.phi_list)
         ]
@@ -865,7 +874,9 @@ class Rib(object):
         scale (float): a scaling factor between the units of VMEC and [cm].
     """
 
-    def __init__(self, ref_surf, s, theta_list, phi, offset_list, scale):
+    def __init__(
+        self, ref_surf, s, theta_list, phi, offset_list, scale, rib_index
+    ):
 
         self.ref_surf = ref_surf
         self.s = s
@@ -873,6 +884,7 @@ class Rib(object):
         self.phi = phi
         self.offset_list = offset_list
         self.scale = scale
+        self.rib_index = rib_index
 
     def _calculate_cartesian_coordinates(self, poloidal_offset=0):
         """Return an N x 3 NumPy array containing the Cartesian coordinates of
@@ -907,7 +919,13 @@ class Rib(object):
         eps = 1e-4
         next_pt_loci = self._calculate_cartesian_coordinates(eps)
 
-        tangent = next_pt_loci - self.rib_loci
+        tangent1 = next_pt_loci - self.rib_loci
+
+        previous_pt_loci = self._calculate_cartesian_coordinates(-eps)
+
+        tangent2 = self.rib_loci - previous_pt_loci
+
+        tangent = normalize(tangent1) + normalize(tangent2)
 
         plane_norm = np.array([-np.sin(self.phi), np.cos(self.phi), 0])
 
@@ -939,6 +957,40 @@ class Rib(object):
             self.rib_loci[0:-1].flatten()
         ).to_array()
         self.mb_verts = np.append(self.mb_verts, self.mb_verts[0])
+
+        tag = mbc.tag_get_handle(
+            vertex_angle_tag,
+            tag_size,
+            double_type,
+            types.MB_TAG_DENSE,
+            create_if_missing=True,
+        )
+        data = np.array(
+            list(
+                zip(
+                    cycle([np.rad2deg(self.phi)]),
+                    np.rad2deg(self.theta_list[0:-1]),
+                )
+            )
+        )
+        mbc.tag_set_data(tag, self.mb_verts[0:-1], data)
+
+        tag = mbc.tag_get_handle(
+            vertex_index_tag,
+            tag_size,
+            integer_type,
+            types.MB_TAG_DENSE,
+            create_if_missing=True,
+        )
+        data = np.array(
+            list(
+                zip(
+                    cycle([self.rib_index]),
+                    range(1, len(self.theta_list)),
+                )
+            )
+        )
+        mbc.tag_set_data(tag, self.mb_verts[0:-1], data)
 
     def generate_rib(self):
         """Constructs component rib by constructing a spline connecting all
