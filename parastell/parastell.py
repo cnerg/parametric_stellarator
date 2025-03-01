@@ -50,17 +50,32 @@ class Stellarator(object):
             the source mesh, and if no other reference surface is provided,
             defines the innermost surface from which in vessel components are
             built.
+        ref_surf (ReferenceSurface): ReferenceSurface object. Must have a method
+            'angles_to_xyz(toroidal_angles, poloidal_angles, s)' that returns
+            an Nx3 numpy array of cartesian coordinates for any closed flux
+            surface label, s, poloidal angle (theta), and toroidal angle (phi).
+            Optional. If None, the vmec data will be used as the reference
+            surface.
         logger (object): logger object (optional, defaults to None). If no
             logger is supplied, a default logger will be instantiated.
     """
 
-    def __init__(self, vmec_file, logger=None):
+    def __init__(self, vmec_file, ref_surf=None, logger=None):
 
         self.logger = logger
+        self.ref_surf = ref_surf
         self.vmec_file = vmec_file
         self.invessel_build = None
         self.magnet_set = None
         self.source_mesh = None
+
+    @property
+    def ref_surf(self):
+        return self._ref_surf
+
+    @ref_surf.setter
+    def ref_surf(self, ref_surf_obj):
+        self._ref_surf = ref_surf_obj
 
     @property
     def vmec_file(self):
@@ -71,19 +86,12 @@ class Stellarator(object):
         self._vmec_file = file
         try:
             self._vmec_obj = read_vmec.VMECData(self._vmec_file)
-            self._ref_surf = ivb.VMECSurface(self._vmec_obj)
+            if self._ref_surf is None:
+                self._ref_surf = ivb.VMECSurface(self._vmec_obj)
 
         except Exception as e:
             self._logger.error(e.args[0])
             raise e
-
-    @property
-    def ref_surf(self):
-        return self._ref_surf
-
-    @ref_surf.setter
-    def ref_surf(self, ref_surf_obj):
-        self._ref_surf = ref_surf_obj
 
     @property
     def logger(self):

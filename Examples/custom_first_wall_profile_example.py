@@ -1,15 +1,12 @@
 import parastell.invessel_build as ivb
 import parastell.parastell as ps
-from parastell.utils import ribs_from_kisslinger_format
 import numpy as np
 
 # Get a predefined set of points representing the first wall.
 custom_surface_ribs = np.load(
     "../tests/files_for_tests/custom_surface_ribs.npy"
 )
-# _, _, _, _, custom_surface_ribs = ribs_from_kisslinger_format(
-#     "wistd_1m_alpha10.txt"
-# )
+
 # For this example, the ribs and points on the ribs are evenly spaced, which
 # is not required.
 num_toroidal_angles, num_poloidal_angles, _ = custom_surface_ribs.shape
@@ -25,11 +22,8 @@ vmec_file = "wout_vmec.nc"
 
 # Instantiate ParaStell build. The PyDAGMC workflow is shown here, however
 # the Cad-to-Dagmc and Cubit workflows also support the use of custom first
-# wall profiles
-stellarator = ps.Stellarator(vmec_file)
-
-# Add the custom reference surface
-stellarator.ref_surf = ks
+# wall profiles.
+stellarator = ps.Stellarator(vmec_file, ref_surf=ks)
 
 # Define desired toroidal and poloidal angles for building the stellarator
 toroidal_angles = [0.0, 11.25, 22.5, 33.75, 45.0, 56.25, 67.5, 78.75, 90.0]

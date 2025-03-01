@@ -1,7 +1,6 @@
 import argparse
 from pathlib import Path
 from abc import ABC
-from itertools import cycle
 
 import numpy as np
 from scipy.interpolate import (
@@ -150,19 +149,13 @@ class RibBasedSurface(ReferenceSurface):
         poloidal_angles (iterable of float): List of poloidal angles
             corresponding to the second dimension of rib_data. Measured in
             degrees. Should start at 0 degrees and end 360 degrees.
-        neighbors (int): Number of neighbors to use when constructing the
-            Radial Basis Function interpolator. If set to None, all points in
-            rib_data will be used. This may require a large amount of memory.
-            Defaults to 400. More neighbors results in a better fit.
     """
 
-    def __init__(
-        self, rib_data, toroidal_angles, poloidal_angles, neighbors=800
-    ):
+    def __init__(self, rib_data, toroidal_angles, poloidal_angles):
         self.rib_data = rib_data
         self.toroidal_angles = toroidal_angles
         self.poloidal_angles = poloidal_angles
-        self.build_analytic_surface(neighbors=neighbors)
+        self.build_analytic_surface()
 
     def _extract_rib_data(self, ribs, toroidal_angles, poloidal_angles):
         for phi, rib in zip(toroidal_angles, ribs):
@@ -172,15 +165,11 @@ class RibBasedSurface(ReferenceSurface):
                 self.z_data.append(rib_locus[2])
                 self.grid_points.append([phi, theta])
 
-    def build_analytic_surface(self, neighbors=400):
-        """Build RBF interpolators for x,y,z coordinates using provided
-        rib_data, toroidal_angles, and poloidal_angles.
-
-        Arguments:
-            neighbors (int): Number of neighbors to use when constructing the
-                Radial Basis Function interpolator. If set to None, all points
-                in rib_data will be used. This may require a large amount of
-                memory. Defaults to 400.
+    def build_analytic_surface(self):
+        """Build interpolators for x,y,z coordinates using provided
+        rib_data, toroidal_angles, and poloidal_angles. Adds copies of the data
+        shifted by one period ahead of and behind provided data in the toroidal
+        and poloidal directions to preserve periodicity.
         """
         self.x_data = []
         self.y_data = []
@@ -240,12 +229,13 @@ class RibBasedSurface(ReferenceSurface):
         self._extract_rib_data(
             rib_subset, self.toroidal_angles, shifted_poloidal_angles
         )
+
         self.rbf_x = CloughTocher2DInterpolator(self.grid_points, self.x_data)
         self.rbf_y = CloughTocher2DInterpolator(self.grid_points, self.y_data)
         self.rbf_z = CloughTocher2DInterpolator(self.grid_points, self.z_data)
 
     def angles_to_xyz(self, toroidal_angles, poloidal_angles, s, scale):
-        """ "Return the cartesian coordinates from the Radial Basis Function
+        """Return the cartesian coordinates from the Radial Basis Function
         interpolators for a set of toroidal and poloidal angle pairs. Takes
         s as a argument for compatibility, but does nothing with it.
 
@@ -794,7 +784,6 @@ class Surface(object):
                 phi,
                 self.offset_mat[i, :],
                 self.scale,
-                i,
             )
             for i, phi in enumerate(self.phi_list)
         ]
@@ -848,9 +837,7 @@ class Rib(object):
         scale (float): a scaling factor between the units of VMEC and [cm].
     """
 
-    def __init__(
-        self, ref_surf, s, theta_list, phi, offset_list, scale, rib_index
-    ):
+    def __init__(self, ref_surf, s, theta_list, phi, offset_list, scale):
 
         self.ref_surf = ref_surf
         self.s = s
@@ -858,7 +845,6 @@ class Rib(object):
         self.phi = phi
         self.offset_list = offset_list
         self.scale = scale
-        self.rib_index = rib_index
 
     def _calculate_cartesian_coordinates(self, poloidal_offset=0):
         """Return an N x 3 NumPy array containing the Cartesian coordinates of
