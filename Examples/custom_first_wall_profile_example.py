@@ -7,9 +7,9 @@ import numpy as np
 custom_surface_ribs = np.load(
     "../tests/files_for_tests/custom_surface_ribs.npy"
 )
-_, _, _, _, custom_surface_ribs = ribs_from_kisslinger_format(
-    "wistd_1m_alpha10.txt"
-)
+# _, _, _, _, custom_surface_ribs = ribs_from_kisslinger_format(
+#     "wistd_1m_alpha10.txt"
+# )
 # For this example, the ribs and points on the ribs are evenly spaced, which
 # is not required.
 num_toroidal_angles, num_poloidal_angles, _ = custom_surface_ribs.shape
@@ -96,4 +96,3 @@ stellarator.build_pydagmc_model(
     magnet_exporter="cad_to_dagmc", max_mesh_size=60
 )
 stellarator.export_pydagmc_model(filename="dagmc")
-stellarator.invessel_build.dag_model.write_file("ivb.vtk")
