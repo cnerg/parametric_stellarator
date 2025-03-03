@@ -348,7 +348,9 @@ def ribs_from_kisslinger_format(filename, start_line=2, scale=m2cm):
 
     Arguments:
         filename (str): Path to the file to be read.
-        start_line (int): Line at which the data should start being read,
+        start_line (int): Line at which the data should start being read. This
+            should be the line that includes the number of toroidal angles,
+            number of points per toroidal angle, and number of periods.
             Defaults to 2.
         scale (float): Amount to scale the r-z coordinates by. Defaults to 100.
     Returns:
@@ -356,7 +358,8 @@ def ribs_from_kisslinger_format(filename, start_line=2, scale=m2cm):
             angles in the input file in degrees.
         num_toroidal_angles (int): Number of toroidal angles as specified in
             the file header.
-        num_poloidal_angles (int): Number of points at each toroidal angle.
+        num_poloidal_angles (int): Number of points at each toroidal angle as
+            specified in the file header.
         periods (int): Number of periods as specified in the file header.
         profiles (numpy array): 3 dimensional numpy array where the first
             dimension corresponds to individual ribs, the second to the
@@ -365,36 +368,36 @@ def ribs_from_kisslinger_format(filename, start_line=2, scale=m2cm):
     """
 
     with open(file=filename) as file:
-        data = file.readlines()
+        data = file.readlines()[start_line - 1 :]
 
     profiles = []
-    profile = []
     toroidal_angles = []
+    num_toroidal_angles, num_poloidal_angles, periods = (
+        int(x) for x in data[0].rstrip().split("\t")
+    )
 
-    for line in data[start_line - 1 :]:
-        if line.count("\t") == 2:
-            num_toroidal_angles, num_poloidal_angles, periods = (
-                line.rstrip().split("\t")
-            )
-        elif "\t" not in line and "#" not in line:
-            toroidal_angle = float(line.rstrip())
-            toroidal_angles.append(toroidal_angle)
-            if len(profile) != 0:
-                profiles.append(profile)
-                profile = []
-        else:
-            line = line.rstrip()
-            r_z_coords = [float(coord) * scale for coord in line.split("\t")]
+    ribs = [
+        data[1:][x : x + num_poloidal_angles + 1]
+        for x in range(0, len(data[1:]), num_poloidal_angles + 1)
+    ]
+
+    for rib in ribs:
+        toroidal_angle = float(rib[0].rstrip())
+        toroidal_angles.append(toroidal_angle)
+        profile = []
+        for loci in rib[1:]:
+            loci = loci.rstrip()
+            r_z_coords = [float(coord) * scale for coord in loci.split("\t")]
             x_coord = r_z_coords[0] * np.cos(np.deg2rad(toroidal_angle))
             y_coord = r_z_coords[0] * np.sin(np.deg2rad(toroidal_angle))
             z_coord = r_z_coords[1]
             profile.append([x_coord, y_coord, z_coord])
-    profiles.append(profile)
+        profiles.append(profile)
 
     return (
         np.array(toroidal_angles),
-        int(num_toroidal_angles),
-        int(num_poloidal_angles),
-        int(periods),
+        num_toroidal_angles,
+        num_poloidal_angles,
+        periods,
         np.array(profiles),
     )
