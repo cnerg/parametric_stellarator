@@ -244,9 +244,15 @@ class RibBasedSurface(ReferenceSurface):
             rib_subset, self.toroidal_angles, shifted_poloidal_angles
         )
 
-        self.rbf_x = CloughTocher2DInterpolator(self.grid_points, self.x_data)
-        self.rbf_y = CloughTocher2DInterpolator(self.grid_points, self.y_data)
-        self.rbf_z = CloughTocher2DInterpolator(self.grid_points, self.z_data)
+        self.x_interp = CloughTocher2DInterpolator(
+            self.grid_points, self.x_data
+        )
+        self.y_interp = CloughTocher2DInterpolator(
+            self.grid_points, self.y_data
+        )
+        self.z_interp = CloughTocher2DInterpolator(
+            self.grid_points, self.z_data
+        )
 
     def angles_to_xyz(self, toroidal_angles, poloidal_angles, s, scale):
         """Return the cartesian coordinates from the interpolators for a set of
@@ -273,10 +279,24 @@ class RibBasedSurface(ReferenceSurface):
         for toroidal_angle, poloidal_angle in zip(
             toroidal_angles, poloidal_angles
         ):
-            x = self.rbf_x(toroidal_angle, poloidal_angle)
-            y = self.rbf_y(toroidal_angle, poloidal_angle)
-            z = self.rbf_z(toroidal_angle, poloidal_angle)
-            coords.append([x, y, z])
+            x = self.x_interp(toroidal_angle, poloidal_angle)
+            y = self.y_interp(toroidal_angle, poloidal_angle)
+            z = self.z_interp(toroidal_angle, poloidal_angle)
+            coord = np.array([x, y, z])
+            # need to force the point to lie directly on the plane for
+            # future cad operations
+            plane_norm = np.array(
+                [
+                    -np.sin(np.deg2rad(toroidal_angle)),
+                    np.cos(np.deg2rad(toroidal_angle)),
+                    0,
+                ]
+            )
+            delta_alpha = (plane_norm * coord).sum() / np.sqrt(
+                np.sum(np.square(plane_norm))
+            )
+            coord += -delta_alpha * plane_norm
+            coords.append(coord)
         return np.array(coords) * scale
 
 
