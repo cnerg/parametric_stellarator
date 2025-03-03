@@ -81,3 +81,28 @@ def test_expand_list():
     expanded_list = expand_list(test_values, 10)
     assert len(expanded_list) == 11
     assert np.allclose(expected_values, expanded_list)
+
+
+def test_rib_rotation():
+    """Tests utils.rotate_ribs() to ensure rotations are as expected
+    by testing if:
+        * a set of points rotated 90 degrees about the z axis has the expected
+          values
+    """
+    # fmt: off
+    original_points = np.array(
+        [
+            [[1, 1, 1], [1, 2, 1], [3, 2, 0]],
+            [[1, 1, 1], [1, 2, 1], [3, 2, 0]],
+        ]
+    )
+    # fmt: on
+    rotation_angle = 90
+    rotated_points_exp = np.array(
+        [
+            [[-1, 1, 1], [-2, 1, 1], [-2, 3, 0]],
+            [[-1, 1, 1], [-2, 1, 1], [-2, 3, 0]],
+        ]
+    )
+    rotated_points = rotate_ribs(original_points, rotation_angle)
+    assert np.allclose(rotated_points, rotated_points_exp)

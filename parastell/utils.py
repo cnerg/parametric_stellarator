@@ -1,6 +1,5 @@
 import yaml
 import tempfile
-from pathlib import Path
 from functools import cached_property
 
 import numpy as np
@@ -311,3 +310,94 @@ def combine_dagmc_models(models_to_merge):
             renumberizer.load_file(temp_filename)
     renumberizer.renumber_ids()
     return dagmc.DAGModel(renumberizer.mb)
+
+
+def rotate_ribs(ribs, angle):
+    """Rotate a set of NxMx3 set of loci about the Z axis in the
+    counter-clockwise direction.
+
+    Arguments:
+        ribs (numpy array): NxMx3 array of of cartesian points. The first
+            dimension corresponds to the plane of constant toroidal angle on
+            which the closed loop of points lies. The second dimension is the
+            location on the closed loop at which the point lies, and the third
+            dimension is the x,y,z value of that point.
+        angle (float): Amount by which to rotate the points in ribs. Measured
+            in degrees, positive in right hand direction about the Z axis.
+
+    Return:
+        ribs (numpy array): Array of the same shape as the ribs argument,
+            with each point rotated by angle about the Z axis.
+    """
+    angle = np.deg2rad(angle)
+    rotation_mat = np.array(
+        [
+            [np.cos(angle), -np.sin(angle), 0],
+            [np.sin(angle), np.cos(angle), 0],
+            [0, 0, 1],
+        ]
+    )
+    ribs = np.dot(ribs, rotation_mat.T)
+    return ribs
+
+
+def ribs_from_kisslinger_format(filename, start_line=2, scale=m2cm):
+    """Reads a Kisslinger format file and returns a list of toroidal angles,
+    along with a list of lists of the rib loci (in x,y,z) at each toroidal
+    angle. It is expected that toroidal angles are provided in degrees.
+
+    Arguments:
+        filename (str): Path to the file to be read.
+        start_line (int): Line at which the data should start being read. This
+            should be the line that includes the number of toroidal angles,
+            number of points per toroidal angle, and number of periods.
+            Defaults to 2.
+        scale (float): Amount to scale the r-z coordinates by. Defaults to 100.
+    Returns:
+        toroidal_angles (numpy array): Toroidal angles in the
+            angles in the input file in degrees.
+        num_toroidal_angles (int): Number of toroidal angles as specified in
+            the file header.
+        num_poloidal_angles (int): Number of points at each toroidal angle as
+            specified in the file header.
+        periods (int): Number of periods as specified in the file header.
+        profiles (numpy array): 3 dimensional numpy array where the first
+            dimension corresponds to individual ribs, the second to the
+            position on a rib, and the third to the actual x,y,z coordinate
+            of the point.
+    """
+
+    with open(file=filename) as file:
+        data = file.readlines()[start_line - 1 :]
+
+    profiles = []
+    toroidal_angles = []
+    num_toroidal_angles, num_poloidal_angles, periods = (
+        int(x) for x in data[0].rstrip().split("\t")
+    )
+
+    ribs = [
+        data[1:][x : x + num_poloidal_angles + 1]
+        for x in range(0, len(data[1:]), num_poloidal_angles + 1)
+    ]
+
+    for rib in ribs:
+        toroidal_angle = float(rib[0].rstrip())
+        toroidal_angles.append(toroidal_angle)
+        profile = []
+        for loci in rib[1:]:
+            loci = loci.rstrip()
+            r_z_coords = [float(coord) * scale for coord in loci.split("\t")]
+            x_coord = r_z_coords[0] * np.cos(np.deg2rad(toroidal_angle))
+            y_coord = r_z_coords[0] * np.sin(np.deg2rad(toroidal_angle))
+            z_coord = r_z_coords[1]
+            profile.append([x_coord, y_coord, z_coord])
+        profiles.append(profile)
+
+    return (
+        np.array(toroidal_angles),
+        num_toroidal_angles,
+        num_poloidal_angles,
+        periods,
+        np.array(profiles),
+    )
