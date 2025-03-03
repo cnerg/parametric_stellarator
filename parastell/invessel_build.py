@@ -87,6 +87,7 @@ class ReferenceSurface(ABC):
             coords (numpy array): Nx3 array of Cartesian coordinates at each
                 angle pair specified.
         """
+        pass
 
 
 class VMECSurface(ReferenceSurface):
@@ -135,7 +136,7 @@ class VMECSurface(ReferenceSurface):
 class RibBasedSurface(ReferenceSurface):
     """An object that uses closed loops of cartesian points (ribs) on planes of
     constant toroidal angle to approximate the innermost surface of an in
-    vessel build
+    vessel build. This class must be used with split_chamber = False.
 
     Arguments:
         rib_data (numpy array): NxMx3 array of of cartesian points. The first
@@ -148,7 +149,7 @@ class RibBasedSurface(ReferenceSurface):
             degrees.
         poloidal_angles (iterable of float): List of poloidal angles
             corresponding to the second dimension of rib_data. Measured in
-            degrees. Should start at 0 degrees and end 360 degrees.
+            degrees. Should start at 0 degrees and end at 360 degrees.
     """
 
     def __init__(self, rib_data, toroidal_angles, poloidal_angles):
@@ -158,6 +159,23 @@ class RibBasedSurface(ReferenceSurface):
         self.build_analytic_surface()
 
     def _extract_rib_data(self, ribs, toroidal_angles, poloidal_angles):
+        """Internal function, not intended for use externally. Updates
+        member variables that track x, y, and z values corresponding to
+        angle pairs for use when building the interpolators.
+
+        Arguments:
+            ribs: NxMx3 array of of cartesian points. The first
+                dimension corresponds to the plane of constant toroidal angle
+                on which the closed loop of points lies. The second dimension
+                is the location on the closed loop at which the point lies, and
+                the third dimension is the x,y,z value of that point.
+            toroidal_angles (iterable of float): List of toroidal angles
+                corresponding to the first dimension of rib_data. Measured in
+                degrees.
+            poloidal_angles (iterable of float): List of poloidal angles
+                corresponding to the second dimension of rib_data. Measured in
+                degrees.
+        """
         for phi, rib in zip(toroidal_angles, ribs):
             for theta, rib_locus in zip(poloidal_angles, rib):
                 self.x_data.append(rib_locus[0])
@@ -175,9 +193,6 @@ class RibBasedSurface(ReferenceSurface):
         self.y_data = []
         self.z_data = []
         self.grid_points = []
-
-        # add mock region before region to be modeled so the interpolator
-        # knows about the periodicity
 
         # Toroidal Periodicity
         rotated_ribs = rotate_ribs(self.rib_data, -max(self.toroidal_angles))[
@@ -199,14 +214,13 @@ class RibBasedSurface(ReferenceSurface):
             rib_subset, self.toroidal_angles, shifted_poloidal_angles
         )
 
-        # add data for the region to be modeled
+        # Provided data
         self._extract_rib_data(
             self.rib_data,
             self.toroidal_angles,
             self.poloidal_angles,
         )
 
-        # add mock region after region to be modeled
         # Toroidal Periodicity
         rotated_ribs = rotate_ribs(self.rib_data, max(self.toroidal_angles))[
             1:
@@ -235,9 +249,9 @@ class RibBasedSurface(ReferenceSurface):
         self.rbf_z = CloughTocher2DInterpolator(self.grid_points, self.z_data)
 
     def angles_to_xyz(self, toroidal_angles, poloidal_angles, s, scale):
-        """Return the cartesian coordinates from the Radial Basis Function
-        interpolators for a set of toroidal and poloidal angle pairs. Takes
-        s as a argument for compatibility, but does nothing with it.
+        """Return the cartesian coordinates from the interpolators for a set of
+        toroidal and poloidal angle pairs. Takes s as a argument for
+        compatibility, but does nothing with it.
 
         Arguments:
             toroidal_angles (iterable of float): Toroidal angles at which to
@@ -272,9 +286,10 @@ class InVesselBuild(object):
 
     Arguments:
         ref_surf (object): ReferenceSurface object. Must have a method
-            'angles_to_xyz(toroidal_angles, poloidal_angles, s)' that returns
-            an Nx3 numpy array of cartesian coordinates for any closed flux
-            surface label, s, poloidal angle (theta), and toroidal angle (phi).
+            'angles_to_xyz(toroidal_angles, poloidal_angles, s, scale)' that
+            returns an Nx3 numpy array of cartesian coordinates for any closed
+            flux surface label, s, poloidal angle (theta), and toroidal angle
+            (phi).
         radial_build (object): RadialBuild class object with all attributes
             defined.
         logger (object): logger object (optional, defaults to None). If no
@@ -746,9 +761,10 @@ class Surface(object):
 
     Arguments:
         ref_surf (object): ReferenceSurface object. Must have a method
-            'angles_to_xyz(toroidal_angles, poloidal_angles, s)' that returns
-            an Nx3 numpy array of cartesian coordinates for any closed flux
-            surface label, s, poloidal angle (theta), and toroidal angle (phi).
+            'angles_to_xyz(toroidal_angles, poloidal_angles, s, scale)' that
+            returns an Nx3 numpy array of cartesian coordinates for any closed
+            flux surface label, s, poloidal angle (theta), and toroidal angle
+            (phi).
         s (float): the normalized closed flux surface label defining the point
             of reference for offset.
         theta_list (np.array(double)): the set of poloidal angles specified for
@@ -822,9 +838,10 @@ class Rib(object):
 
     Arguments:
         ref_surf (object): ReferenceSurface object. Must have a method
-            'angles_to_xyz(toroidal_angles, poloidal_angles, s)' that returns
-            an Nx3 numpy array of cartesian coordinates for any closed flux
-            surface label, s, poloidal angle (theta), and toroidal angle (phi).
+            'angles_to_xyz(toroidal_angles, poloidal_angles, s, scale)' that
+            returns an Nx3 numpy array of cartesian coordinates for any closed
+            flux surface label, s, poloidal angle (theta), and toroidal angle
+            (phi).
         s (float): the normalized closed flux surface label defining the point
             of reference for offset.
         phi (np.array(double)): the toroidal angle defining the plane in which
@@ -888,7 +905,9 @@ class Rib(object):
         return normalize(norm)
 
     def calculate_loci(self):
-        """Generates Cartesian point-loci for stellarator rib."""
+        """Generates Cartesian point-loci for stellarator rib. Sets the last
+        element to the value of the first to ensure the loop is closed exactly.
+        """
         self.rib_loci = self._calculate_cartesian_coordinates()
         if not np.all(self.offset_list == 0):
             self.rib_loci += self.offset_list[:, np.newaxis] * self._normals()

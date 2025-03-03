@@ -50,12 +50,12 @@ class Stellarator(object):
             the source mesh, and if no other reference surface is provided,
             defines the innermost surface from which in vessel components are
             built.
-        ref_surf (ReferenceSurface): ReferenceSurface object. Must have a method
-            'angles_to_xyz(toroidal_angles, poloidal_angles, s)' that returns
-            an Nx3 numpy array of cartesian coordinates for any closed flux
-            surface label, s, poloidal angle (theta), and toroidal angle (phi).
-            Optional. If None, the vmec data will be used as the reference
-            surface.
+        ref_surf (ReferenceSurface): ReferenceSurface object. Must have a
+            method 'angles_to_xyz(toroidal_angles, poloidal_angles, s)' that
+            returns an Nx3 numpy array of cartesian coordinates for any closed
+            flux surface label, s, poloidal angle (theta), and toroidal angle
+            (phi). Optional. If None, the vmec data will be used as the
+            reference surface.
         logger (object): logger object (optional, defaults to None). If no
             logger is supplied, a default logger will be instantiated.
     """
