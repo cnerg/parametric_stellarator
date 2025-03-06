@@ -16,7 +16,7 @@ authors = [
 
 ] # TODO
 
-keywords = [] # TODO
+keywords = ["stellarator", "fusion", "reactor", "parametric", "cad", "model", "dagmc", "geometry"]
 license = {file="LICENSE.md"}
 classifiers = [
        "Development Status :: 3 - Alpha",
