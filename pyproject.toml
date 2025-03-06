@@ -1,6 +1,6 @@
 [project]
 name = "parastell"
-description = "Parametric 3-D CAD modeling toolset for stellarator fusion devices; aka Micah pretends to know fusion"
+description = "Parametric 3-D CAD modeling toolset for stellarator fusion devices"
 version = "0.0.2"
 
 readme = "README.md"
