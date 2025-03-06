@@ -1,0 +1,68 @@
+[project]
+name = "parastell"
+description = "Parametric 3-D CAD modeling toolset for stellarator fusion devices"
+version = "0.0.2"
+
+readme = "README.md"
+requires-python = ">=3.11"
+maintainers = [
+	{name = "Connor Moreno", email = "camoreno@wisc.edu"}
+]
+
+authors = [
+	{name = "Connor Moreno", email = "camoreno@wisc.edu"},
+	{name = "Edgar"}, # TODO
+	{name = "Paul Wilson", email = "paul.wilson@wisc.edu"},
+
+] # TODO
+
+keywords = ["stellarator", "fusion", "reactor", "parametric", "cad", "model", "dagmc", "geometry"]
+license = {file="LICENSE.md"}
+classifiers = [
+       "Development Status :: 3 - Alpha",
+       "Intended Audience :: Science/Research",
+       "Intended Audience :: Developers",
+       "License :: OSI Approved :: MIT License",
+       "Natural Language :: English",
+       "Operating System :: OS Independent",
+       "Topic :: Scientific/Engineering :: Physics",
+       "Topic :: Scientific/Engineering",
+       "Topic :: Scientific/Engineering :: Human Machine Interfaces",
+       "Programming Language :: Python :: 3 :: Only",
+       "Programming Language :: Python :: 3.11",
+       "Programming Language :: Python :: 3.12",
+       "Programming Language :: Python :: 3.13"
+]
+
+dependencies = [
+	"numpy==1.26.4",
+	"scipy",
+	"cadquery",
+	"moab=5.5.1[build=nompi_tempest_*]",
+	"cad_to_dagmc >=0.8.2",
+	"ca-certificates",
+	"certifi",
+	"openssl",
+	"openmc>=0.15.0[build=dagmc_nompi_*]",
+	"matplotlib",
+	"netcdf4",
+	"pyyaml",
+	"git+https://github.com/aaroncbader/pystell_uw.git",
+      	"git+https://github.com/svalinn/pydagmc.git"
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+format = ["black"]
+
+[project.urls]
+Repository = "https://github.com/svalinn/parastell.git"
+"Bug Tracker" = "https://github.com/svalinn/parastell/issues"
+
+[project.scripts]
+"parastell" = "parastell:parastell"
+
+[build-system]
+requires = ["setuptools>=64.0.0"]
+build-backend = "setuptools.build_meta"
